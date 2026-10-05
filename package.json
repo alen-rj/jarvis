@@ -1,0 +1,14 @@
+{
+  "name": "jarvis-android",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Jarvis voice assistant - native Android build",
+  "scripts": { "sync": "cap sync android" },
+  "dependencies": {
+    "@capacitor/android": "8.5.2",
+    "@capacitor/core": "8.5.2"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "8.5.2"
+  }
+}

@@ -1,83 +1,56 @@
-# Jarvis — free voice assistant for your phone
+# Jarvis — Android app
 
-A cinematic, voice-first assistant that installs on your phone like an app. Every part of it runs on free services. Total cost: **₹0**.
+Your Jarvis assistant as a real Android app. Free to build, free to run, no Play Store needed.
 
-## What it costs
+## What the app adds over the website
 
-| Piece | Service | Cost |
-|---|---|---|
-| Speech to text | Browser's built-in recognition (Chrome on Android) | Free |
-| Voice replies | Phone's built-in text-to-speech | Free |
-| Weather | Open-Meteo (no key) | Free |
-| Nearby places | OpenStreetMap / Overpass (no key) | Free |
-| Offline answers | Wikipedia + DuckDuckGo (no key) | Free |
-| Smart conversation + live Google search (optional) | Gemini API free tier, your own key | Free |
-| PDF reading | pdf.js, runs on the phone | Free |
-| Cinematic photo grade | Runs on the phone | Free |
-| Hosting | GitHub Pages or Netlify | Free |
+- **"Hey Jarvis" with the screen off.** It listens offline on your phone (open-source Vosk model), with a small notification while it listens.
+- **Default assistant.** Long-press the power button, or use the assistant gesture, and Jarvis opens already listening.
+- **Real alarms and timers** go straight into your Clock app.
+- **Reminders that ring even when Jarvis is closed**, and they survive a reboot.
+- **Reads your calendar** for "What's on my schedule today?"
+- **Finds people in your contacts.** You confirm with one tap, then it calls or sends the SMS itself.
+- **Opens any installed app by name.**
+- **Saves cinematic photos** to Pictures › Jarvis.
 
-No server, no database, no subscription. Your memory, reminders and key stay on your phone.
+Everything else works as before: Gemini (free key) for conversation and search, weather, nearby places, PDFs, memory.
 
-## Put it on your phone (10 minutes)
+## Get the APK (no Android Studio needed)
 
-The app must be served over **https** for the microphone to work. Pick one:
+GitHub builds it for you for free.
 
-**Option A — GitHub Pages**
-1. Create a new public repo, e.g. `jarvis`.
-2. Upload every file in this folder (index.html, sw.js, manifest.webmanifest, icons).
-3. Repo → Settings → Pages → Source: `main` branch, root → Save.
-4. Open `https://<your-username>.github.io/jarvis/` in **Chrome on Android**.
+1. Upload everything in this folder to your GitHub repo (`alen-rj/jarvis`), including the hidden `.github` folder.
+2. Open the repo's **Actions** tab. If asked, click **"I understand my workflows, go ahead and enable them"**.
+3. The **Build Jarvis APK** run starts by itself (or click **Run workflow**). It takes about 5–8 minutes.
+4. When it's green, open on your phone: `https://github.com/alen-rj/jarvis/releases/latest`
+5. Tap **jarvis.apk** to download it, then open it. Allow "Install unknown apps" for Chrome when Android asks.
 
-**Option B — Netlify Drop**
-Go to app.netlify.com/drop and drag this whole folder in. You get an https link right away.
+Every later push builds a new version. Install it over the old one; your data stays.
 
-Then in Chrome: menu ⋮ → **Add to Home screen / Install app**. It opens full screen like a native app.
+## First-time setup on the phone
 
-## Turn on the brain (optional, free)
+Open Jarvis → **gear icon** → **Phone setup**, and tap each button:
 
-1. Go to https://aistudio.google.com/apikey and create a key (Google account only, no card).
-2. In the app: Settings (gear) → paste it in **Gemini API key**.
+1. **Allow** permissions: microphone, contacts, calendar, calls, texts, alerts.
+2. **Download** the offline wake-word model (40 MB, one time).
+3. **Allow** "Display over other apps", so Jarvis can open when you call it with the screen off.
+4. **Allow** unrestricted battery, so Android doesn't kill it.
+5. **Set** default assistant: choose **Jarvis** under *Default digital assistant app*.
 
-The top bar switches from `LOCAL` to `GEMINI`. You now get natural conversation, multi-step tasks, Google-grounded search, PDF and photo understanding. The free tier has daily limits; when they run out the app falls back to local mode automatically. Note: Google may use free-tier requests to improve its models, so avoid sending private data.
+Then turn on **Wake word** in the same Settings panel and paste your Gemini key.
 
-## Things to say
+Xiaomi, Redmi, Realme, Oppo, Vivo, OnePlus: also open the phone's own Settings → Apps → Jarvis and turn on **Autostart**, and set battery to **No restrictions**. These brands close background apps aggressively.
 
-- "Hey Jarvis, what's the weather today?"  /  "Weather in Coimbatore"
-- "Set a timer for 20 minutes"
-- "Remind me to submit my assignment at 8 PM"
-- "Wake me up at 6:30 tomorrow"
-- "Open Spotify and play my workout playlist"
-- "Send a message to John saying I'll be there in 10 minutes" (add "on WhatsApp" for WhatsApp)
-- "Call Mom"
-- "Find me a good restaurant nearby"
-- "What's on my schedule today?"
-- "Search for the best Python courses and summarize the top three" (best with Gemini key)
-- Attach a PDF (paperclip) → "Explain this PDF"
-- Attach a photo → "Make it look cinematic"
-- "Remember that my exam is on the 14th" → later: "What do you remember about me?"
-- "Stop" / "Cancel"
+## Honest limits
 
-## Wake word
+- **Battery.** The wake word keeps the microphone on, so expect noticeably higher battery use while it's enabled.
+- **After a reboot**, open Jarvis once to restart the wake word. Android doesn't let apps start the microphone by themselves at boot. Reminders come back on their own.
+- **Accuracy.** The offline wake-word model is small, so it may sometimes miss "Hey Jarvis" or mishear similar words. Speaking a little louder and slower helps.
+- **Ordinary command recognition** uses Google's free speech service on your phone. It needs internet unless you download offline speech in the Google app.
+- **Signing key.** The app is signed with a key stored in this repo (`android/app/jarvis.keystore`). That's fine for a personal app. If you ever publish it on the Play Store, make a new private key instead.
 
-Settings → **Wake word**. While the app is open and on screen, it listens for "Hey Jarvis" (rename it in settings). The screen stays awake while it listens.
+## Project layout
 
-**The limitation, stated plainly:** Android and iOS don't let any web app listen in the background or when the screen is off. That needs a native app with special system permissions. The closest reliable alternatives:
-- Keep the app open on a charger/stand with wake word on (desk mode).
-- Long-press the home-screen icon → **Talk now** shortcut starts listening instantly.
-- "Hey Google, open Jarvis" launches it hands-free.
-
-## What it can and can't do on the phone
-
-Done fully in the app: timers, in-app reminders, memory, weather, search, nearby places, PDF summaries, photo grading, voice in and out.
-
-Prepared for one tap from you (phones require it): calls, SMS/WhatsApp, opening apps, Clock alarms, calendar events. The assistant never says something was sent or called when it only prepared it.
-
-Not possible from a web app: reading your calendar, browsing phone storage on its own, background reminders when the app is closed. For reminders that must ring when closed, tap **Add to Calendar** on the reminder.
-
-Best on: **Chrome for Android**. iPhone Safari works for typing, weather, search and visuals; voice input there is limited.
-
-## Files
-
-- `index.html` — the whole app (UI, voice, core animation, tools, AI)
-- `sw.js` — offline shell + notifications
-- `manifest.webmanifest`, `icon*` — installable app metadata
+- `www/` — the web app (same as the website). Edit `index.html` / `native.js` here.
+- `android/` — native Android project (Capacitor 8). Native code: `android/app/src/main/java/com/alenrj/jarvis/`
+- `.github/workflows/build-apk.yml` — the free cloud build.

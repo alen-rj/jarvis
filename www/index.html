@@ -241,6 +241,7 @@ body[data-state=listening] .mic{background:radial-gradient(circle at 50% 40%,rgb
 </section>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js" defer></script>
+<script src="capacitor.js"></script>
 <script>
 "use strict";
 /* ============ storage ============ */
@@ -821,12 +822,14 @@ $("#btnNotify").onclick=async()=>{await Notification.requestPermission();syncSet
 $("#btnForget").onclick=()=>{facts=[];contactsKnown={};store.set("facts",facts);store.set("contacts",contactsKnown);caption("Memory cleared.")};
 let installEvt=null;addEventListener("beforeinstallprompt",e=>{e.preventDefault();installEvt=e;$("#btnInstall").hidden=false});
 $("#btnInstall").onclick=async()=>{if(installEvt){installEvt.prompt();installEvt=null;$("#btnInstall").hidden=true}};
-if("serviceWorker" in navigator&&!inPreview&&location.protocol!=="file:")navigator.serviceWorker.register("sw.js").catch(()=>{});
+const isNativeApp=!!(window.Capacitor&&window.Capacitor.isNativePlatform&&window.Capacitor.isNativePlatform());
+if("serviceWorker" in navigator&&!inPreview&&!isNativeApp&&location.protocol!=="file:")navigator.serviceWorker.register("sw.js").catch(()=>{});
 // boot
 syncSettings();setState("idle");checkMissedReminders();
 (function greet(){const h=new Date().getHours();const g=h<5?"Working late.":h<12?"Good morning.":h<17?"Good afternoon.":"Good evening.";
   caption(`${g} ${cfg.key?"Fully online.":"Running free in local mode. Add a free Gemini key in settings for full conversation."}`)})();
 if(new URLSearchParams(location.search).has("listen"))setTimeout(startCommand,600);else if(cfg.wake)setTimeout(startWake,800);
 </script>
+<script src="native.js"></script>
 </body>
 </html>

@@ -1,0 +1,6 @@
+{
+  "appId": "com.alenrj.jarvis",
+  "appName": "Jarvis",
+  "webDir": "www",
+  "android": { "backgroundColor": "#04070a" }
+}
