@@ -9,7 +9,7 @@ Your Jarvis assistant as a real Android app. Free to build, free to run, no Play
 - **Real alarms and timers** go straight into your Clock app.
 - **Reminders that ring even when Jarvis is closed**, and they survive a reboot.
 - **Reads your calendar** for "What's on my schedule today?"
-- **Finds people in your contacts.** You confirm with one tap, then it calls or sends the SMS itself.
+- **Finds people in your contacts** and opens the call or text ready to go. You press call or send.
 - **Opens any installed app by name.**
 - **Saves cinematic photos** to Pictures › Jarvis.
 

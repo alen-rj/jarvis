@@ -218,9 +218,8 @@
     if (!c.list.length) return { say: `I couldn't find ${raw} in your contacts.`, result: { error: "not found" } };
     const doCall = x => confirmSheet("Call", `Call <q>${esc(x.name)}</q> on ${esc(x.number)}?`, null, "Call", async () => {
       if (await lockedGuard()) return;
-      await NJ.requestPerms({ aliases: ["phone"] }).catch(() => {});
       const r = await NJ.callNumber({ number: x.number }).catch(() => ({}));
-      say(r.calling ? `Calling ${x.name}.` : `The dialer is open for ${x.name}. Tap call.`);
+      say(r.dialer || r.calling ? `The dialer is ready for ${x.name}. Tap call.` : "The dialer didn't open.");
     });
     const ask = pickOrAsk(c.list, raw, doCall, "Call");
     if (ask) return ask;
@@ -241,25 +240,17 @@
         const r = await NJ.openUrl({ url: `https://wa.me/${waNumber(x.number)}?text=${enc(body)}` }).catch(() => ({}));
         say(r.opened ? "WhatsApp is open with your message. Tap send." : "WhatsApp didn't open.");
       });
-      confirmSheet("Send text", `To <q>${esc(x.name)}</q> · ${esc(x.number)}<br><br>“${esc(body)}”`, null, "Send", async () => {
+      confirmSheet("Text message", `To <q>${esc(x.name)}</q> · ${esc(x.number)}<br><br>“${esc(body)}”`, null, "Open Messages", async () => {
         if (await lockedGuard()) return;
-        const p = await NJ.requestPerms({ aliases: ["sms"] }).catch(() => ({}));
-        if (p.sms !== "granted") {
-          await NJ.openUrl({ url: `sms:${x.number}?body=${enc(body)}` }).catch(() => {});
-          say("Messages is open with your text. Tap send."); return;
-        }
-        setState("executing", "Sending");
-        try {
-          const r = await NJ.sendSms({ number: x.number, body });
-          say(r.sent ? `Sent to ${x.name}.` : r.pending ? `Still sending to ${x.name}. Check Messages in a moment.` : `That didn't go through (${r.error}).`);
-        } catch (e) { fail(e.message || "Couldn't send."); }
+        const r = await NJ.openUrl({ url: `sms:${x.number.replace(/\s/g, "")}?body=${enc(body)}` }).catch(() => ({}));
+        say(r.opened ? `Messages is open with your text to ${x.name}. Tap send.` : "Messages didn't open.");
       });
     };
     const ask = pickOrAsk(c.list, recipient, doSend, "Text");
     if (ask) return ask;
     doSend(c.list[0]);
     const x = c.list[0];
-    return { say: wa ? `WhatsApp ${x.name}: ${body}. Tap to open it, then send.` : `Text ${x.name}: ${body}. Tap send to confirm.`, result: { status: "awaiting_user_confirmation" } };
+    return { say: wa ? `WhatsApp ${x.name}: ${body}. Tap to open it, then send.` : `Text ${x.name}: ${body}. Tap to open Messages, then send.`, result: { status: "awaiting_user_confirmation" } };
   };
 
   T.get_schedule = async () => {
@@ -288,7 +279,7 @@
 
   /* ---------- Phone setup panel in Settings ---------- */
   const lim = document.querySelector(".limits");
-  if (lim) lim.innerHTML = `<div><b>Running as a phone app.</b> The wake word works with the screen off, alarms and timers go into your Clock app, and reminders arrive even when I'm closed.</div><div>Calls and texts always show you exactly what will happen. One tap from you and I do it.</div>`;
+  if (lim) lim.innerHTML = `<div><b>Running as a phone app.</b> The wake word works with the screen off, alarms and timers go into your Clock app, and reminders arrive even when I'm closed.</div><div>Calls and texts open ready to go in your Phone and Messages apps. You press call or send, so nothing goes out without you.</div>`;
   const wakeHelp = $("#optWake") && $("#optWake").closest(".row").querySelector("small");
   if (wakeHelp) wakeHelp.innerHTML = 'Listens for “Hey <span class="nm"></span>” even with the screen off. Runs offline on your phone; a small notification shows while it listens.';
   document.querySelectorAll(".nm").forEach(n => n.textContent = cfg.name);
@@ -309,9 +300,9 @@
   async function refreshSetup() {
     const s = await NJ.checkPerms().catch(() => ({}));
     const rows = [
-      ["Microphone, contacts, calendar, calls, texts, alerts",
-        ["microphone", "contacts", "calendar", "phone", "sms", "notifications"].every(k => s[k] === "granted"),
-        "Allow", async () => { await NJ.requestPerms({ aliases: ["microphone", "contacts", "calendar", "phone", "sms", "notifications"] }).catch(() => {}); refreshSetup(); }],
+      ["Microphone, contacts, calendar, alerts",
+        ["microphone", "contacts", "calendar", "notifications"].every(k => s[k] === "granted"),
+        "Allow", async () => { await NJ.requestPerms({ aliases: ["microphone", "contacts", "calendar", "notifications"] }).catch(() => {}); refreshSetup(); }],
       ["Offline wake-word model (40 MB)", !!s.wakeModel, "Download", async () => {
         try { caption("Downloading the wake-word model…"); await NJ.prepareWakeModel(); caption("Wake-word model ready."); } catch (e) { caption(e.message); } refreshSetup(); }],
       ["Open when called from the lock screen", !!s.overlay, "Allow", () => NJ.openSetting({ which: "overlay" })],

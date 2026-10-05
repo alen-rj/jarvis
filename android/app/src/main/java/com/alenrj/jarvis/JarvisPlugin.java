@@ -74,8 +74,6 @@ import java.util.zip.ZipInputStream;
         @Permission(alias = "microphone", strings = { Manifest.permission.RECORD_AUDIO }),
         @Permission(alias = "contacts", strings = { Manifest.permission.READ_CONTACTS }),
         @Permission(alias = "calendar", strings = { Manifest.permission.READ_CALENDAR }),
-        @Permission(alias = "phone", strings = { Manifest.permission.CALL_PHONE }),
-        @Permission(alias = "sms", strings = { Manifest.permission.SEND_SMS }),
         @Permission(alias = "notifications", strings = { "android.permission.POST_NOTIFICATIONS" })
     }
 )
@@ -137,6 +135,7 @@ public class JarvisPlugin extends Plugin {
         try {
             for (Object o : arr.toList()) {
                 String a = String.valueOf(o);
+                if (!a.equals("microphone") && !a.equals("contacts") && !a.equals("calendar") && !a.equals("notifications")) continue;
                 if (a.equals("notifications") && Build.VERSION.SDK_INT < 33) continue;
                 if (getPermissionState(a) != PermissionState.GRANTED) wanted.add(a);
             }
@@ -153,7 +152,7 @@ public class JarvisPlugin extends Plugin {
 
     private JSObject states() {
         JSObject o = new JSObject();
-        for (String a : new String[] { "microphone", "contacts", "calendar", "phone", "sms", "notifications" }) {
+        for (String a : new String[] { "microphone", "contacts", "calendar", "notifications" }) {
             if (a.equals("notifications") && Build.VERSION.SDK_INT < 33) { o.put(a, "granted"); continue; }
             PermissionState s = getPermissionState(a);
             o.put(a, s == null ? "prompt" : s.toString());
