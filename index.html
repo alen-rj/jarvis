@@ -1,0 +1,832 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#04070a">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-192.png">
+<title>Jarvis Core</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@300;400;500&display=swap">
+<style>
+/* Layout: one fixed screen — status rail on top, the core owns the middle, caption under it, a thin dock at the bottom; history and settings slide over as glass sheets. */
+:root{
+  color-scheme: dark;
+  --void:#04070a;       /* ground */
+  --deep:#08121a;       /* raised ground */
+  --glass:rgba(10,22,30,.72);
+  --line:rgba(120,214,255,.14);
+  --line-strong:rgba(120,214,255,.32);
+  --cyan:#62d6ff;       /* primary signal */
+  --cyan-dim:#2b8db0;
+  --ice:#dff5ff;        /* foreground text */
+  --muted:#7593a1;      /* secondary text */
+  --amber:#f0b13c;      /* single accent: actions in progress */
+  --alert:#ff6266;
+  --ok:#5fe0a8;
+  --f-display:"Chakra Petch","Rajdhani","Segoe UI",system-ui,sans-serif;
+  --f-body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,"SFMono-Regular",Menlo,monospace;
+  --r:14px;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{
+  background:var(--void);color:var(--ice);font:15px/1.5 var(--f-body);
+  overflow:hidden;-webkit-tap-highlight-color:transparent;
+  background-image:
+    radial-gradient(ellipse 70% 50% at 50% 42%, rgba(40,120,160,.10), transparent 70%),
+    repeating-linear-gradient(0deg, rgba(120,214,255,.025) 0 1px, transparent 1px 44px),
+    repeating-linear-gradient(90deg, rgba(120,214,255,.025) 0 1px, transparent 1px 44px);
+}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:1px solid var(--cyan);outline-offset:3px}
+[hidden]{display:none!important}
+
+.app{height:100%;display:flex;flex-direction:column;padding:calc(env(safe-area-inset-top,0px) + 10px) 16px calc(env(safe-area-inset-bottom,0px) + 12px)}
+
+/* status rail */
+.rail{display:flex;align-items:center;justify-content:space-between;gap:12px;font:500 11px/1 var(--f-display);letter-spacing:.18em;text-transform:uppercase;color:var(--muted)}
+.mark{display:flex;align-items:center;gap:10px;color:var(--ice)}
+.mark i{width:6px;height:6px;border-radius:50%;background:var(--cyan);box-shadow:0 0 8px var(--cyan)}
+body[data-state=error] .mark i{background:var(--alert);box-shadow:0 0 8px var(--alert)}
+.rail .right{display:flex;gap:14px;font-family:var(--f-mono);letter-spacing:.06em;font-size:11px}
+.notice{margin-top:8px;font:12px/1.4 var(--f-body);color:var(--amber);border:1px solid rgba(240,177,60,.3);border-radius:10px;padding:8px 10px}
+
+/* stage */
+.stage{flex:1;min-height:0;position:relative;display:flex;flex-direction:column;align-items:center}
+.core-wrap{position:relative;flex:1;min-height:180px;width:100%;}
+#core{position:absolute;inset:0;width:100%;height:100%;cursor:pointer;touch-action:manipulation}
+.readout{width:100%;max-width:560px;text-align:center;display:flex;flex-direction:column;gap:6px;padding-block:4px 10px;min-height:120px}
+.status{font:600 11px/1 var(--f-display);letter-spacing:.32em;color:var(--cyan);text-transform:uppercase}
+body[data-state=executing] .status{color:var(--amber)}
+body[data-state=error] .status{color:var(--alert)}
+.caption{font:300 18px/1.45 var(--f-body);color:var(--ice);text-wrap:balance;max-height:6.6em;overflow:auto;scrollbar-width:none}
+.caption::-webkit-scrollbar{display:none}
+.heard{font:13px/1.4 var(--f-mono);color:var(--muted);min-height:1.4em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.heard:not(:empty)::before{content:"› ";color:var(--cyan-dim)}
+
+/* actions + timers */
+.tray{width:100%;max-width:560px;display:flex;flex-direction:column;gap:8px;margin-bottom:10px}
+.act{display:flex;align-items:center;gap:12px;background:var(--glass);border:1px solid var(--line);border-radius:var(--r);padding:10px 10px 10px 14px;backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);animation:rise .35s ease both}
+.act .t{flex:1;min-width:0}
+.act .t b{display:block;font:500 14px/1.3 var(--f-body);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.act .t span{display:block;font:12px/1.3 var(--f-mono);color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.act a.go,.act button.go{flex:none;text-decoration:none;font:600 12px/1 var(--f-display);letter-spacing:.14em;text-transform:uppercase;color:var(--void);background:var(--cyan);border:0;border-radius:999px;padding:10px 14px}
+.act .x{flex:none;background:none;border:0;color:var(--muted);width:30px;height:30px;font-size:18px;line-height:1}
+.chips{display:flex;flex-wrap:wrap;gap:8px;justify-content:center}
+.chip{display:inline-flex;align-items:center;gap:8px;font:500 12px/1 var(--f-mono);color:var(--amber);border:1px solid rgba(240,177,60,.35);border-radius:999px;padding:7px 8px 7px 12px;background:rgba(240,177,60,.06)}
+.chip button{background:none;border:0;color:var(--muted);padding:0 2px;font-size:14px;line-height:1}
+.attach-chip{color:var(--cyan);border-color:var(--line-strong);background:rgba(98,214,255,.06)}
+
+/* dock */
+.dock{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:8px;max-width:560px;width:100%;margin:0 auto}
+.dock .side{display:flex;gap:6px}
+.dock .side.r{justify-content:flex-end}
+.ib{width:44px;height:44px;border-radius:50%;border:1px solid var(--line);background:rgba(10,22,30,.5);display:grid;place-items:center;color:var(--muted);transition:color .2s,border-color .2s}
+.ib:hover,.ib[aria-pressed=true]{color:var(--cyan);border-color:var(--line-strong)}
+.ib svg{width:20px;height:20px}
+.mic{width:72px;height:72px;border-radius:50%;border:1px solid var(--line-strong);background:radial-gradient(circle at 50% 40%,rgba(98,214,255,.18),rgba(8,18,26,.9) 70%);display:grid;place-items:center;color:var(--cyan);position:relative}
+.mic svg{width:26px;height:26px}
+.mic::after{content:"";position:absolute;inset:-7px;border-radius:50%;border:1px solid var(--line);transition:transform .4s,border-color .4s}
+body[data-state=listening] .mic::after{transform:scale(1.12);border-color:var(--cyan);animation:ping 1.4s ease-out infinite}
+body[data-state=listening] .mic{background:radial-gradient(circle at 50% 40%,rgba(98,214,255,.4),rgba(8,18,26,.9) 72%)}
+.hint{text-align:center;font:500 10px/1 var(--f-display);letter-spacing:.26em;color:var(--muted);text-transform:uppercase;margin-top:10px}
+.typebar{display:flex;gap:8px;max-width:560px;width:100%;margin:0 auto 10px}
+.typebar input{flex:1;min-width:0;background:var(--deep);border:1px solid var(--line);border-radius:999px;padding:12px 16px;outline:none}
+.typebar input:focus{border-color:var(--line-strong)}
+.typebar button{border:0;border-radius:999px;background:var(--cyan);color:var(--void);font:600 12px/1 var(--f-display);letter-spacing:.14em;padding:0 16px;text-transform:uppercase}
+
+/* sheets */
+.scrim{position:fixed;inset:0;background:rgba(2,4,6,.6);backdrop-filter:blur(2px);z-index:20;animation:fade .2s}
+.sheet{position:fixed;left:0;right:0;bottom:0;z-index:21;max-height:82%;display:flex;flex-direction:column;background:linear-gradient(180deg,rgba(12,26,36,.96),rgba(6,12,18,.98));border-top:1px solid var(--line-strong);border-radius:20px 20px 0 0;padding:14px 16px calc(env(safe-area-inset-bottom,0px) + 16px);animation:up .28s cubic-bezier(.2,.8,.2,1)}
+.sheet header{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+.sheet h2{margin:0;font:600 12px/1 var(--f-display);letter-spacing:.28em;text-transform:uppercase;color:var(--cyan)}
+.sheet .body{overflow:auto;min-height:0;display:flex;flex-direction:column;gap:14px;padding-bottom:6px}
+.turn{display:grid;grid-template-columns:52px 1fr;gap:10px;font-size:14px}
+.turn .who{font:500 10px/1.9 var(--f-display);letter-spacing:.2em;color:var(--muted);text-transform:uppercase}
+.turn.ai .who{color:var(--cyan)}
+.turn .txt{min-width:0;overflow-wrap:anywhere}
+.turn .src{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.turn .src a{font:11px/1.4 var(--f-mono);color:var(--cyan-dim);text-decoration:none;border-bottom:1px solid var(--line)}
+.empty{color:var(--muted);font-size:14px}
+.field{display:flex;flex-direction:column;gap:6px}
+.field label,.row label{font:500 11px/1 var(--f-display);letter-spacing:.18em;text-transform:uppercase;color:var(--muted)}
+.field input,.field select{background:var(--deep);border:1px solid var(--line);border-radius:10px;padding:10px 12px;outline:none;min-width:0}
+.field small,.row small{color:var(--muted);font-size:12px;line-height:1.45}
+.field small a,.row small a{color:var(--cyan)}
+.row{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.row>div{min-width:0}
+.sw{appearance:none;width:44px;height:24px;border-radius:999px;background:var(--deep);border:1px solid var(--line-strong);position:relative;flex:none;transition:background .2s}
+.sw::after{content:"";position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:var(--muted);transition:transform .2s,background .2s}
+.sw:checked{background:rgba(98,214,255,.18)}
+.sw:checked::after{transform:translateX(20px);background:var(--cyan)}
+.btnrow{display:flex;gap:8px;flex-wrap:wrap}
+.btn{border:1px solid var(--line-strong);background:transparent;border-radius:999px;padding:10px 16px;font:600 11px/1 var(--f-display);letter-spacing:.16em;text-transform:uppercase;color:var(--ice)}
+.btn.p{background:var(--cyan);color:var(--void);border-color:var(--cyan)}
+.btn.d{color:var(--alert);border-color:rgba(255,98,102,.4)}
+.limits{font-size:12.5px;color:var(--muted);border-left:1px solid var(--line-strong);padding-left:12px;display:flex;flex-direction:column;gap:6px}
+.limits b{color:var(--ice);font-weight:500}
+.confirm-q{font:300 17px/1.45 var(--f-body)}
+.confirm-q q{color:var(--cyan)}
+.viewer img{width:100%;border-radius:10px;border:1px solid var(--line);display:block}
+
+@keyframes rise{from{opacity:.0;transform:translateY(6px)}to{opacity:1;transform:none}}
+@keyframes up{from{transform:translateY(100%)}to{transform:none}}
+@keyframes fade{from{opacity:0}to{opacity:1}}
+@keyframes ping{0%{opacity:1}100%{opacity:.15;transform:scale(1.28)}}
+@media (prefers-reduced-motion:reduce){*{animation-duration:.01ms!important;transition-duration:.01ms!important}}
+@media (min-height:760px){.caption{font-size:19px}}
+</style>
+</head>
+<body data-state="idle">
+<div class="app">
+  <div class="rail">
+    <div class="mark"><i></i><span id="nameMark">JARVIS</span></div>
+    <div class="right"><span id="railBrain">LOCAL</span><span id="railBatt"></span><span id="railClock">--:--</span></div>
+  </div>
+  <div class="notice" id="previewNote" hidden>Preview mode. Voice, location and live data switch on once the app is opened from its own web address on your phone.</div>
+
+  <div class="stage">
+    <div class="core-wrap"><canvas id="core" aria-label="Assistant core. Tap to speak." role="button" tabindex="0"></canvas></div>
+    <div class="readout" aria-live="polite">
+      <div class="status" id="status">Standing by</div>
+      <div class="caption" id="caption">Good to see you. Tap the core or say the wake word.</div>
+      <div class="heard" id="heard"></div>
+    </div>
+    <div class="tray">
+      <div class="chips" id="chips"></div>
+      <div id="actions" style="display:flex;flex-direction:column;gap:8px"></div>
+    </div>
+  </div>
+
+  <form class="typebar" id="typebar" hidden>
+    <input id="typein" autocomplete="off" enterkeyhint="send" placeholder="Type a command">
+    <button type="submit">Send</button>
+  </form>
+
+  <div class="dock">
+    <div class="side">
+      <button class="ib" id="btnHistory" aria-label="Conversation history"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 6h16M4 12h10M4 18h13"/></svg></button>
+      <button class="ib" id="btnAttach" aria-label="Attach a PDF or image"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M20 11.5 12.2 19.3a5 5 0 0 1-7.1-7.1l8.3-8.3a3.3 3.3 0 0 1 4.7 4.7l-8.2 8.2a1.7 1.7 0 0 1-2.4-2.4l7.4-7.4"/></svg></button>
+    </div>
+    <button class="mic" id="btnMic" aria-label="Speak"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/></svg></button>
+    <div class="side r">
+      <button class="ib" id="btnType" aria-label="Type instead" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M7 10h.01M11 10h.01M15 10h.01M7 14h10"/></svg></button>
+      <button class="ib" id="btnSettings" aria-label="Settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="3"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M5.3 18.7l2.1-2.1M16.6 7.4l2.1-2.1"/></svg></button>
+    </div>
+  </div>
+  <div class="hint" id="hint">Tap to speak</div>
+</div>
+
+<input type="file" id="fileAttach" accept="application/pdf,image/*,.txt,.md" hidden>
+<input type="file" id="fileCamera" accept="image/*" capture="environment" hidden>
+<input type="file" id="fileSearch" multiple hidden>
+
+<!-- History -->
+<div class="scrim" id="scrim" hidden></div>
+<section class="sheet" id="sheetHistory" hidden aria-label="Conversation">
+  <header><h2>Conversation</h2><button class="ib" data-close aria-label="Close">✕</button></header>
+  <div class="body" id="historyBody"></div>
+  <div class="btnrow" style="margin-top:12px"><button class="btn d" id="btnClearHistory">Clear conversation</button></div>
+</section>
+
+<!-- Settings -->
+<section class="sheet" id="sheetSettings" hidden aria-label="Settings">
+  <header><h2>Systems</h2><button class="ib" data-close aria-label="Close">✕</button></header>
+  <div class="body">
+    <div class="row"><div><label for="optWake">Wake word</label><br><small>Listens for “Hey <span class="nm">Jarvis</span>” while this app is open and the screen is on.</small></div><input type="checkbox" class="sw" id="optWake"></div>
+    <div class="row"><div><label for="optVoice">Spoken replies</label><br><small>Turn off to read replies silently.</small></div><input type="checkbox" class="sw" id="optVoice"></div>
+    <div class="field"><label for="optKey">Gemini API key (free, optional)</label>
+      <input id="optKey" type="password" autocomplete="off" placeholder="Paste key to enable full conversation">
+      <small>Unlocks natural conversation, Google-grounded web search and document understanding on Google's free tier. Get a key at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a>. Stored only on this phone. Free-tier requests may be used by Google to improve its models, so don't send anything private.</small></div>
+    <div class="field"><label for="optModel">Model</label><input id="optModel" autocomplete="off"><small>Default <code>gemini-flash-latest</code> follows Google's newest free Flash model.</small></div>
+    <div class="field"><label for="optName">Assistant name &amp; wake word</label><input id="optName" autocomplete="off"></div>
+    <div class="field"><label for="optVoicePick">Voice</label><select id="optVoicePick"></select></div>
+    <div class="field"><label for="optLang">Speech language</label><select id="optLang">
+      <option value="en-IN">English (India)</option><option value="en-GB">English (UK)</option><option value="en-US">English (US)</option><option value="hi-IN">Hindi</option><option value="ta-IN">Tamil</option><option value="ml-IN">Malayalam</option></select></div>
+    <div class="btnrow">
+      <button class="btn" id="btnNotify">Allow alerts</button>
+      <button class="btn" id="btnInstall" hidden>Install app</button>
+      <button class="btn" id="btnTestVoice">Test voice</button>
+      <button class="btn d" id="btnForget">Forget memory</button>
+    </div>
+    <div class="limits">
+      <div><b>What the phone allows.</b> A web app can't run in the background, so the wake word, timers and reminders work while the app is open. For reminders that must ring when it's closed, use the “Add to Calendar” button I offer.</div>
+      <div>Calls, messages, alarms and opening other apps need one tap from you. I prepare them; you confirm. I never report something as sent when I only opened it.</div>
+      <div>Reading your calendar or browsing phone storage isn't possible from a web app. I'll open Calendar for you, and you can pick files for me to search.</div>
+    </div>
+  </div>
+</section>
+
+<!-- Confirm -->
+<section class="sheet" id="sheetConfirm" hidden aria-label="Confirm action">
+  <header><h2 id="confirmTitle">Confirm</h2><button class="ib" data-close aria-label="Close">✕</button></header>
+  <div class="body"><div class="confirm-q" id="confirmText"></div>
+    <div class="btnrow"><a class="btn p" id="confirmGo" href="#" target="_blank" rel="noopener" style="text-decoration:none">Open</a><button class="btn" id="confirmCancel">Cancel</button></div></div>
+</section>
+
+<!-- Image viewer -->
+<section class="sheet viewer" id="sheetImage" hidden aria-label="Image result">
+  <header><h2>Cinematic grade</h2><button class="ib" data-close aria-label="Close">✕</button></header>
+  <div class="body"><img id="viewerImg" alt="Graded image">
+    <div class="btnrow"><button class="btn" id="btnBefore">Hold for original</button><a class="btn p" id="btnSaveImg" download="cinematic.jpg" style="text-decoration:none">Save</a><button class="btn" id="btnShareImg">Share</button></div></div>
+</section>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js" defer></script>
+<script>
+"use strict";
+/* ============ storage ============ */
+const store={get(k,d){try{const v=localStorage.getItem("jv."+k);return v==null?d:JSON.parse(v)}catch(e){return d}},set(k,v){try{localStorage.setItem("jv."+k,JSON.stringify(v))}catch(e){}}};
+const cfg=Object.assign({name:"Jarvis",wake:false,voiceOn:true,key:"",model:"gemini-flash-latest",voice:"",lang:(navigator.language||"en-IN").startsWith("en")?(navigator.language.includes("-")?navigator.language:"en-IN"):"en-IN"},store.get("cfg",{}));
+const saveCfg=()=>store.set("cfg",cfg);
+let history=store.get("history",[]);      // {role:'user'|'ai', text, t, sources?}
+let facts=store.get("facts",[]);          // strings the user asked me to remember
+let contactsKnown=store.get("contacts",{});// name -> tel learned from contact picker
+let reminders=store.get("reminders",[]);  // {id,text,at}
+const timers=[];                          // {id,label,end,handle}
+let pendingSlot=null;                     // multi-turn slot filling
+let doc=null, img=null;                   // attachments
+const $=s=>document.querySelector(s);
+const isAndroid=/Android/i.test(navigator.userAgent);
+const inPreview=typeof window.claude!=="undefined";
+if(inPreview) $("#previewNote").hidden=false;
+
+/* ============ state + HUD ============ */
+const S={state:"idle",energy:0,bump:0,label:""};
+const STATUS={idle:"Standing by",listening:"Listening",thinking:"Processing",speaking:"Speaking",executing:"Working",error:"Error"};
+function setState(s,label){S.state=s;S.label=label||"";document.body.dataset.state=s;$("#status").textContent=label||STATUS[s];
+  $("#hint").textContent=s==="listening"?"Listening…":s==="speaking"?"Tap to interrupt":cfg.wake?`Say “Hey ${cfg.name}” or tap`:"Tap to speak";}
+function bump(v){S.bump=Math.max(S.bump,v)}
+function caption(t){$("#caption").textContent=t}
+function heard(t){$("#heard").textContent=t||""}
+function brainLabel(){$("#railBrain").textContent=cfg.key?"GEMINI":"LOCAL"}
+function tickRail(){const d=new Date();$("#railClock").textContent=d.toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"});}
+setInterval(tickRail,10000);tickRail();
+const hud={batt:null,net:navigator.onLine};
+if(navigator.getBattery){navigator.getBattery().then(b=>{const u=()=>{hud.batt=Math.round(b.level*100);$("#railBatt").textContent=hud.batt+"%"+(b.charging?"+":"")};u();b.addEventListener("levelchange",u);b.addEventListener("chargingchange",u)}).catch(()=>{})}
+addEventListener("online",()=>hud.net=true);addEventListener("offline",()=>hud.net=false);
+
+/* ============ core animation ============ */
+const cv=$("#core"),cx=cv.getContext("2d");
+let W=0,H=0,DPR=1;
+function fit(){DPR=Math.min(devicePixelRatio||1,2);const r=cv.getBoundingClientRect();W=r.width;H=r.height;cv.width=W*DPR;cv.height=H*DPR;cx.setTransform(DPR,0,0,DPR,0,0)}
+new ResizeObserver(fit).observe(cv);fit();
+const reduce=matchMedia("(prefers-reduced-motion: reduce)").matches;
+const parts=Array.from({length:28},(_,i)=>({a:Math.random()*Math.PI*2,r:.42+Math.random()*.4,s:(.4+Math.random())*(i%2?1:-1),z:Math.random()}));
+let rot=0,rot2=0,lastT=performance.now(),scale=1;
+const target={idle:.12,listening:.45,thinking:.35,speaking:.5,executing:.3,error:.2};
+function col(a){return S.state==="error"?`rgba(255,98,102,${a})`:`rgba(98,214,255,${a})`}
+function frame(now){
+  const dt=Math.min(.05,(now-lastT)/1000);lastT=now;const t=now/1000;
+  S.bump*=Math.pow(.04,dt);
+  const tgt=(target[S.state]||.1)+S.bump*.8;
+  S.energy+=(tgt-S.energy)*Math.min(1,dt*6);
+  const spin={idle:.05,listening:.12,thinking:.9,speaking:.18,executing:.6,error:.02}[S.state]*(reduce?.2:1);
+  rot+=dt*spin;rot2-=dt*spin*.7;
+  scale+=((S.state==="listening"?1.05:1)-scale)*Math.min(1,dt*5);
+  cx.clearRect(0,0,W,H);
+  const X=W/2,Y=H/2,R=Math.max(40,Math.min(W*.9,H-44)/2*.9)*scale;
+  const breath=reduce?0:Math.sin(t*1.2)*.015;
+  cx.lineCap="round";
+  // outer tick ring
+  cx.save();cx.translate(X,Y);cx.rotate(rot*.3);
+  for(let i=0;i<120;i++){const a=i/120*Math.PI*2,long=i%10===0;cx.strokeStyle=col(long?.55:.18);cx.lineWidth=long?1.2:.8;
+    const r1=R*(long?.93:.955);cx.beginPath();cx.moveTo(Math.cos(a)*r1,Math.sin(a)*r1);cx.lineTo(Math.cos(a)*R*.98,Math.sin(a)*R*.98);cx.stroke()}
+  cx.restore();
+  cx.strokeStyle=col(.14);cx.lineWidth=1;cx.beginPath();cx.arc(X,Y,R*.9,0,Math.PI*2);cx.stroke();
+  // segmented arcs
+  cx.save();cx.translate(X,Y);cx.rotate(rot);
+  cx.strokeStyle=col(.5);cx.lineWidth=2;
+  for(let k=0;k<4;k++){const a0=k*Math.PI/2+.12;cx.beginPath();cx.arc(0,0,R*.83,a0,a0+Math.PI/2-.5);cx.stroke()}
+  cx.restore();
+  cx.save();cx.translate(X,Y);cx.rotate(rot2);
+  cx.strokeStyle=col(.22);cx.lineWidth=6;
+  for(let k=0;k<3;k++){const a0=k*Math.PI*2/3;cx.beginPath();cx.arc(0,0,R*.76,a0,a0+.9);cx.stroke()}
+  // amber accent arc
+  cx.strokeStyle=S.state==="executing"?"rgba(240,177,60,.95)":"rgba(240,177,60,.55)";cx.lineWidth=1.6;
+  cx.beginPath();cx.arc(0,0,R*.7,-2.2,-2.2+(S.state==="executing"?1.6:.7));cx.stroke();
+  cx.restore();
+  // waveform ring
+  const base=R*(.56+breath),amp=R*.11*S.energy;
+  cx.beginPath();
+  for(let i=0;i<=180;i++){const a=i/180*Math.PI*2;
+    const n=Math.sin(a*6+t*3.1)*.5+Math.sin(a*11-t*4.3)*.3+Math.sin(a*3+t*1.7)*.4+Math.sin(a*17+t*6)*.15*S.energy*2;
+    const r=base+amp*n;const px=X+Math.cos(a)*r,py=Y+Math.sin(a)*r;i?cx.lineTo(px,py):cx.moveTo(px,py)}
+  cx.closePath();cx.strokeStyle=col(.85);cx.lineWidth=1.3;cx.shadowColor=col(.8);cx.shadowBlur=10*S.energy+2;cx.stroke();cx.shadowBlur=0;
+  cx.beginPath();cx.arc(X,Y,base*.9,0,Math.PI*2);cx.strokeStyle=col(.12);cx.lineWidth=1;cx.stroke();
+  // inner core
+  const cr=R*(.3+breath*2+S.energy*.04);
+  const g=cx.createRadialGradient(X,Y,0,X,Y,cr);
+  g.addColorStop(0,col(.32+S.energy*.3));g.addColorStop(.55,col(.08+S.energy*.08));g.addColorStop(1,col(0));
+  cx.fillStyle=g;cx.beginPath();cx.arc(X,Y,cr,0,Math.PI*2);cx.fill();
+  cx.strokeStyle=col(.4);cx.lineWidth=1;cx.beginPath();cx.arc(X,Y,cr*.62,0,Math.PI*2);cx.stroke();
+  cx.fillStyle=col(.9);cx.beginPath();cx.arc(X,Y,2.2,0,Math.PI*2);cx.fill();
+  // crosshair hairlines
+  cx.strokeStyle=col(.1);cx.beginPath();cx.moveTo(X-R*1.02,Y);cx.lineTo(X-R*.62,Y);cx.moveTo(X+R*.62,Y);cx.lineTo(X+R*1.02,Y);cx.stroke();
+  // particles while thinking/executing
+  if(S.state==="thinking"||S.state==="executing"){
+    for(const p of parts){p.a+=dt*p.s*(1.2+p.z);const r=R*p.r;cx.fillStyle=S.state==="executing"?`rgba(240,177,60,${.3+p.z*.6})`:col(.3+p.z*.6);
+      cx.beginPath();cx.arc(X+Math.cos(p.a)*r,Y+Math.sin(p.a)*r,.8+p.z*1.4,0,Math.PI*2);cx.fill()}
+  }
+  // data indicators (real values only)
+  cx.font=`500 10px "Chakra Petch",sans-serif`;try{cx.letterSpacing="2px"}catch(e){}
+  const labels=[
+    [-2.36,`MODE ${cfg.wake?"WAKE":"TAP"}`],
+    [-.79,`NET ${hud.net?"ONLINE":"OFFLINE"}`],
+    [.79,hud.batt!=null?`PWR ${hud.batt}%`:`MEM ${facts.length}`],
+    [2.36,S.state==="executing"&&S.label?S.label.toUpperCase():`CORE ${S.state.toUpperCase()}`]];
+  for(const [a,txt] of labels){const right=Math.cos(a)>0,top=Math.sin(a)<0;
+    const tx=right?W-2:2,ty=top?10:H-10;
+    const r1=R*.99,px=X+Math.cos(a)*r1,py=Y+Math.sin(a)*r1;
+    cx.strokeStyle=col(.18);cx.beginPath();cx.moveTo(px,py);cx.lineTo(px+(right?10:-10),ty+(top?8:-8));cx.lineTo(tx+(right?-0:0),ty+(top?8:-8));cx.stroke();
+    cx.fillStyle=a===2.36&&S.state==="executing"?"rgba(240,177,60,.9)":col(.6);cx.textAlign=right?"right":"left";cx.textBaseline="middle";cx.fillText(txt,tx,ty)}
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+/* ============ sound ============ */
+let actx=null;
+function chime(kind){try{actx=actx||new (window.AudioContext||window.webkitAudioContext)();const now=actx.currentTime;
+  const notes=kind==="alarm"?[880,660,880,660,880]:kind==="err"?[300,220]:[660,990];
+  notes.forEach((f,i)=>{const o=actx.createOscillator(),g=actx.createGain();o.type="sine";o.frequency.value=f;g.gain.setValueAtTime(0,now+i*.14);g.gain.linearRampToValueAtTime(.12,now+i*.14+.02);g.gain.exponentialRampToValueAtTime(.001,now+i*.14+.22);o.connect(g).connect(actx.destination);o.start(now+i*.14);o.stop(now+i*.14+.25)})}catch(e){}}
+
+/* ============ speech out ============ */
+let voices=[];
+function loadVoices(){voices=speechSynthesis?speechSynthesis.getVoices():[];const sel=$("#optVoicePick");if(!sel)return;
+  sel.innerHTML="";const en=voices.filter(v=>/^en|^hi|^ta|^ml/i.test(v.lang));
+  const o0=document.createElement("option");o0.value="";o0.textContent="Automatic";sel.appendChild(o0);
+  en.forEach(v=>{const o=document.createElement("option");o.value=v.name;o.textContent=`${v.name} (${v.lang})`;sel.appendChild(o)});sel.value=cfg.voice||""}
+if("speechSynthesis" in window){loadVoices();speechSynthesis.onvoiceschanged=loadVoices}
+function pickVoice(){if(cfg.voice){const v=voices.find(v=>v.name===cfg.voice);if(v)return v}
+  return voices.find(v=>/en-GB/i.test(v.lang)&&/male|daniel|george|arthur|ryan/i.test(v.name))||voices.find(v=>/en-GB/i.test(v.lang))||voices.find(v=>v.lang===cfg.lang)||null}
+function speak(text){return new Promise(res=>{
+  if(!cfg.voiceOn||!("speechSynthesis" in window)||!text){setState("idle");res();resumeWake();return}
+  speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(text.replace(/https?:\/\/\S+/g,""));
+  const v=pickVoice();if(v){u.voice=v;u.lang=v.lang}else u.lang=cfg.lang;u.rate=1.02;u.pitch=.92;
+  let pulse=setInterval(()=>bump(.35+Math.random()*.3),180);
+  u.onstart=()=>setState("speaking");
+  u.onboundary=()=>bump(.85);
+  setState("speaking");
+  const done=()=>{clearInterval(pulse);if(S.state==="speaking"||S.state==="thinking"||S.state==="executing")setState("idle");res();resumeWake()};
+  let ended=false;const once=()=>{if(!ended){ended=true;done()}};
+  u.onend=once;u.onerror=once;speechSynthesis.speak(u);
+  const guard=setInterval(()=>{if(ended){clearInterval(guard);return}if(!speechSynthesis.speaking&&!speechSynthesis.pending){clearInterval(guard);once()}},1500)})}
+
+/* ============ speech in ============ */
+const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+let rec=null,recMode=null,busy=false;
+function stopRec(){if(rec){recMode=null;try{rec.onend=null;rec.abort()}catch(e){}rec=null}}
+function wakeWords(){const n=cfg.name.toLowerCase().trim();const w=[n];if(n==="jarvis")w.push("jervis","javis","jarvi","service");return w}
+function startCommand(){
+  if(!SR){caption("Voice input isn't supported in this browser. Chrome on Android works best. You can type below.");showType(true);setState("error");return}
+  stopRec();if("speechSynthesis" in window)speechSynthesis.cancel();
+  const r=new SR();rec=r;recMode="command";r.lang=cfg.lang;r.interimResults=true;r.continuous=false;r.maxAlternatives=1;
+  let fin="",errored=false;
+  r.onstart=()=>{setState("listening");heard("");chime()};
+  r.onresult=e=>{let inter="";for(let i=e.resultIndex;i<e.results.length;i++){const x=e.results[i];if(x.isFinal)fin+=x[0].transcript;else inter+=x[0].transcript}heard(fin+inter);bump(.7)};
+  r.onerror=e=>{errored=true;if(e.error==="no-speech"||e.error==="aborted"){setState("idle");caption("I didn't catch that.")}
+    else if(e.error==="not-allowed"||e.error==="service-not-allowed"){fail("Microphone access is blocked. Allow the microphone for this site in your browser settings, or type instead.");showType(true)}
+    else if(e.error==="network"){fail("Speech recognition needs a connection. Check your internet, or type instead.")}
+    else fail("Voice input stopped: "+e.error)};
+  r.onend=()=>{rec=null;recMode=null;const txt=fin.trim();if(txt)handle(txt);else{if(!errored&&S.state==="listening"){setState("idle");caption("I didn't catch that.")}resumeWake()}};
+  try{r.start()}catch(e){fail("Couldn't start the microphone. Try again.")}
+}
+function startWake(){
+  if(!SR||!cfg.wake||document.hidden||busy||rec||S.state==="speaking")return;
+  const r=new SR();rec=r;recMode="wake";r.lang=cfg.lang;r.continuous=true;r.interimResults=true;
+  r.onresult=e=>{for(let i=e.resultIndex;i<e.results.length;i++){const x=e.results[i];const tx=x[0].transcript.toLowerCase();
+      const w=wakeWords().find(w=>tx.includes(w));if(!w)continue;
+      if(!x.isFinal){bump(.5);continue}
+      const rest=tx.slice(tx.indexOf(w)+w.length).replace(/^[\s,.!?]+/,"").trim();
+      stopRec();if(rest.length>2)handle(rest);else startCommand();return}};
+  r.onerror=e=>{if(e.error==="not-allowed"||e.error==="service-not-allowed"){cfg.wake=false;saveCfg();syncSettings();caption("Wake word is off: the microphone isn't allowed for this site.")}};
+  r.onend=()=>{if(rec===r){rec=null;recMode=null;setTimeout(startWake,350)}};
+  try{r.start();setState("idle")}catch(e){rec=null}
+}
+function resumeWake(){if(cfg.wake&&!busy)setTimeout(startWake,500)}
+document.addEventListener("visibilitychange",()=>{if(document.hidden){if(recMode==="wake")stopRec()}else{resumeWake();checkMissedReminders()}});
+let wakeLock=null;
+async function holdScreen(on){try{if(on&&"wakeLock" in navigator&&!wakeLock){wakeLock=await navigator.wakeLock.request("screen");wakeLock.addEventListener("release",()=>wakeLock=null)}else if(!on&&wakeLock){await wakeLock.release();wakeLock=null}}catch(e){}}
+
+/* ============ UI helpers ============ */
+function addTurn(role,text,sources){history.push({role,text,t:Date.now(),sources:sources||undefined});if(history.length>80)history=history.slice(-80);store.set("history",history)}
+function fail(msg){setState("error");caption(msg);chime("err");addTurn("ai",msg);setTimeout(()=>{if(S.state==="error")setState("idle")},4000)}
+function offer({title,sub,href,label="Open",onClick,keep}){
+  const box=$("#actions");while(box.children.length>=3)box.firstChild.remove();
+  const el=document.createElement("div");el.className="act";
+  const t=document.createElement("div");t.className="t";const b=document.createElement("b");b.textContent=title;const s=document.createElement("span");s.textContent=sub||"";t.append(b,s);
+  let go;if(href){go=document.createElement("a");go.href=href;if(/^https?:/.test(href)){go.target="_blank";go.rel="noopener"}}else{go=document.createElement("button");go.type="button"}
+  go.className="go";go.textContent=label;go.addEventListener("click",ev=>{if(onClick)onClick(ev);if(!keep)setTimeout(()=>el.remove(),300)});
+  const x=document.createElement("button");x.className="x";x.type="button";x.setAttribute("aria-label","Dismiss");x.textContent="×";x.onclick=()=>el.remove();
+  el.append(t,go,x);box.appendChild(el);return el}
+function showType(on){$("#typebar").hidden=!on;$("#btnType").setAttribute("aria-pressed",on);if(on)setTimeout(()=>$("#typein").focus(),50)}
+function openSheet(id){$("#scrim").hidden=false;$(id).hidden=false}
+function closeSheets(){document.querySelectorAll(".sheet").forEach(s=>s.hidden=true);$("#scrim").hidden=true}
+function renderHistory(){const b=$("#historyBody");b.innerHTML="";if(!history.length){b.innerHTML='<div class="empty">Nothing yet. What you say and what I answer appears here.</div>';return}
+  history.forEach(h=>{const d=document.createElement("div");d.className="turn "+h.role;const w=document.createElement("div");w.className="who";w.textContent=h.role==="user"?"You":cfg.name;
+    const tx=document.createElement("div");tx.className="txt";tx.textContent=h.text;
+    if(h.sources&&h.sources.length){const s=document.createElement("div");s.className="src";h.sources.slice(0,5).forEach(x=>{const a=document.createElement("a");a.href=x.url;a.target="_blank";a.rel="noopener";a.textContent=x.title||new URL(x.url).hostname;s.appendChild(a)});tx.appendChild(s)}
+    d.append(w,tx);b.appendChild(d)});b.scrollTop=b.scrollHeight}
+function renderChips(){const c=$("#chips");c.innerHTML="";
+  timers.forEach(tm=>{const left=Math.max(0,Math.round((tm.end-Date.now())/1000));const ch=document.createElement("span");ch.className="chip";
+    ch.textContent=`${tm.label?tm.label+" ":""}${fmtClock(left)}`;const x=document.createElement("button");x.textContent="×";x.setAttribute("aria-label","Cancel timer");x.onclick=()=>cancelTimer(tm.id);ch.appendChild(x);c.appendChild(ch)});
+  const att=doc||img;if(att){const ch=document.createElement("span");ch.className="chip attach-chip";ch.textContent=(doc?"DOC ":"IMG ")+att.name.slice(0,22);const x=document.createElement("button");x.textContent="×";x.setAttribute("aria-label","Remove attachment");x.onclick=()=>{doc=null;img=null;renderChips()};ch.appendChild(x);c.appendChild(ch)}}
+setInterval(()=>{if(timers.length)renderChips()},1000);
+
+/* ============ time parsing ============ */
+const NUMW={a:1,an:1,one:1,two:2,three:3,four:4,five:5,six:6,seven:7,eight:8,nine:9,ten:10,fifteen:15,twenty:20,thirty:30,forty:40,"forty-five":45,fifty:50,sixty:60};
+function num(s){s=String(s).toLowerCase();return NUMW[s]!=null?NUMW[s]:parseFloat(s)}
+function parseDuration(s){s=s.toLowerCase();let total=0,hit=false;
+  if(/half an hour/.test(s)){total+=1800;hit=true;s=s.replace(/half an hour/g,"")}
+  const re=/(\d+(?:\.\d+)?|an?|one|two|three|four|five|six|seven|eight|nine|ten|fifteen|twenty|thirty|forty|forty-five|fifty|sixty)\s*(hours?|hrs?|h\b|minutes?|mins?|m\b|seconds?|secs?|s\b)/g;let m;
+  while((m=re.exec(s))){const n=num(m[1]);const u=m[2][0];total+=n*(u==="h"?3600:u==="m"?60:1);hit=true}
+  return hit?Math.round(total):null}
+function parseWhen(s){s=s.toLowerCase();const now=new Date();
+  let m=s.match(/\bin\s+(\d+(?:\.\d+)?|an?|one|two|three|five|ten|fifteen|twenty|thirty)\s*(seconds?|secs?|minutes?|mins?|hours?|hrs?|days?)/);
+  if(m){const n=num(m[1]);const u=m[2][0]==="s"?1e3:m[2].startsWith("m")?6e4:m[2][0]==="h"?36e5:864e5;return new Date(+now+n*u)}
+  if(/in half an hour/.test(s))return new Date(+now+18e5);
+  let tomorrow=/tomorrow/.test(s),h=null,mi=0;
+  if(/\bnoon\b/.test(s))h=12;else if(/\bmidnight\b/.test(s)){h=0;tomorrow=true}
+  m=s.match(/\b(\d{1,2})(?:[:.](\d{2}))?\s*(a\.?\s?m\.?|p\.?\s?m\.?)/);
+  if(m){h=(+m[1])%12;mi=+(m[2]||0);if(m[3][0]==="p")h+=12}
+  else{m=s.match(/\b(?:at|by|around)\s+(\d{1,2})(?:[:.](\d{2}))?\b/)||s.match(/\b(\d{1,2})[:.](\d{2})\b/);
+    if(m){h=+m[1];mi=+(m[2]||0);if(h<12&&/tonight|evening|night/.test(s))h+=12;else if(h>=1&&h<=6&&!/morning/.test(s)&&!m[2])h+=12}}
+  if(h==null){if(/tonight/.test(s))h=20;else if(/evening/.test(s))h=18;else if(/afternoon/.test(s))h=15;else if(/morning/.test(s))h=9;else if(tomorrow)h=9;else return null}
+  const d=new Date(now);d.setHours(h,mi,0,0);if(tomorrow)d.setDate(d.getDate()+1);else if(d<=now)d.setDate(d.getDate()+1);return d}
+const WHEN_RE=/\s*\b(?:(?:tomorrow|tonight)\s+)?(?:(?:at|by|around)\s+\d{1,2}(?:[:.]\d{2})?\s*(?:a\.?\s?m\.?|p\.?\s?m\.?)?|in\s+(?:\d+(?:\.\d+)?|an?|half an|one|two|three|five|ten|fifteen|twenty|thirty)\s*(?:seconds?|secs?|minutes?|mins?|hours?|hrs?|days?|hour)|\d{1,2}(?:[:.]\d{2})?\s*(?:a\.?\s?m\.?|p\.?\s?m\.?)|tomorrow(?:\s+(?:morning|afternoon|evening|night))?|tonight|this\s+(?:morning|afternoon|evening)|at\s+(?:noon|midnight))(?:\s+(?:tomorrow|tonight|today))?/gi;
+function fmtTime(d){const now=new Date();const same=d.toDateString()===now.toDateString();const tm=d.toLocaleTimeString([], {hour:"numeric",minute:"2-digit"});
+  if(same)return tm;const tmr=new Date(now);tmr.setDate(now.getDate()+1);if(d.toDateString()===tmr.toDateString())return tm+" tomorrow";return d.toLocaleDateString([], {weekday:"long",day:"numeric",month:"short"})+" at "+tm}
+function fmtClock(sec){const h=Math.floor(sec/3600),m=Math.floor(sec%3600/60),s=sec%60;return (h?h+":"+String(m).padStart(2,"0"):m)+":"+String(s).padStart(2,"0")}
+function fmtDur(sec){const h=Math.floor(sec/3600),m=Math.floor(sec%3600/60),s=sec%60;const p=[];if(h)p.push(h+(h>1?" hours":" hour"));if(m)p.push(m+(m>1?" minutes":" minute"));if(s&&!h)p.push(s+(s>1?" seconds":" second"));return p.join(" ")||"0 seconds"}
+function gcalStamp(d){const p=n=>String(n).padStart(2,"0");return `${d.getFullYear()}${p(d.getMonth()+1)}${p(d.getDate())}T${p(d.getHours())}${p(d.getMinutes())}00`}
+function gcalLink(title,start,end,details){return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(title)}&dates=${gcalStamp(start)}/${gcalStamp(end)}&details=${encodeURIComponent(details||"Added by "+cfg.name)}`}
+
+/* ============ notifications ============ */
+async function notify(title,body){try{if(Notification.permission==="granted"){const reg=await navigator.serviceWorker?.getRegistration();if(reg)reg.showNotification(title,{body,icon:"icon-192.png",badge:"icon-192.png",vibrate:[200,100,200],tag:"jv-"+Date.now()});else new Notification(title,{body})}}catch(e){}
+  if(navigator.vibrate)navigator.vibrate([300,150,300,150,300])}
+
+/* ============ network helpers ============ */
+async function getJSON(url,opt){const ctl=new AbortController();const to=setTimeout(()=>ctl.abort(),12000);try{const r=await fetch(url,{...opt,signal:ctl.signal});if(!r.ok)throw new Error("HTTP "+r.status);return await r.json()}finally{clearTimeout(to)}}
+function jsonp(url){return new Promise((res,rej)=>{const cb="jvcb"+Date.now()+Math.floor(Math.random()*1e5);const s=document.createElement("script");
+  const clean=()=>{clearTimeout(t);try{delete window[cb]}catch(e){}s.remove()};const t=setTimeout(()=>{clean();rej(new Error("timeout"))},9000);
+  window[cb]=d=>{clean();res(d)};s.onerror=()=>{clean();rej(new Error("network"))};s.src=url+"&callback="+cb;document.head.appendChild(s)})}
+let geoCache=null;
+function getPosition(){return new Promise((res,rej)=>{if(geoCache&&Date.now()-geoCache.t<6e5)return res(geoCache);if(!navigator.geolocation)return rej(new Error("no-geo"));
+  navigator.geolocation.getCurrentPosition(p=>{geoCache={lat:p.coords.latitude,lon:p.coords.longitude,t:Date.now()};res(geoCache)},e=>rej(new Error(e.code===1?"denied":"unavailable")),{timeout:10000,maximumAge:6e5,enableHighAccuracy:false})})}
+async function placeName(lat,lon){try{const d=await getJSON(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lon}&localityLanguage=en`);return d.city||d.locality||d.principalSubdivision||""}catch(e){return ""}}
+function distM(a,b,c,d){const R=6371e3,r=x=>x*Math.PI/180;const dl=r(c-a),dn=r(d-b);const h=Math.sin(dl/2)**2+Math.cos(r(a))*Math.cos(r(c))*Math.sin(dn/2)**2;return 2*R*Math.asin(Math.sqrt(h))}
+
+/* ============ TOOLS — each returns {say, result, sources?} ============ */
+const WMO={0:"clear",1:"mostly clear",2:"partly cloudy",3:"overcast",45:"foggy",48:"foggy",51:"light drizzle",53:"drizzle",55:"heavy drizzle",61:"light rain",63:"rain",65:"heavy rain",66:"freezing rain",67:"freezing rain",71:"light snow",73:"snow",75:"heavy snow",80:"light showers",81:"showers",82:"heavy showers",95:"thunderstorms",96:"thunderstorms with hail",99:"thunderstorms with hail"};
+const APPS={spotify:["com.spotify.music","https://open.spotify.com"],youtube:["com.google.android.youtube","https://m.youtube.com"],"youtube music":["com.google.android.apps.youtube.music","https://music.youtube.com"],whatsapp:["com.whatsapp","https://web.whatsapp.com"],instagram:["com.instagram.android","https://www.instagram.com"],gmail:["com.google.android.gm","https://mail.google.com"],maps:["com.google.android.apps.maps","https://maps.google.com"],"google maps":["com.google.android.apps.maps","https://maps.google.com"],calendar:["com.google.android.calendar","https://calendar.google.com"],photos:["com.google.android.apps.photos","https://photos.google.com"],drive:["com.google.android.apps.docs","https://drive.google.com"],telegram:["org.telegram.messenger","https://web.telegram.org"],netflix:["com.netflix.mediaclient","https://www.netflix.com"],chrome:["com.android.chrome","https://www.google.com"],"play store":["com.android.vending","https://play.google.com"],clock:["com.google.android.deskclock",""],calculator:["com.google.android.calculator",""],linkedin:["com.linkedin.android","https://www.linkedin.com"],x:["com.twitter.android","https://x.com"],twitter:["com.twitter.android","https://x.com"],github:["com.github.android","https://github.com"],discord:["com.discord","https://discord.com/app"],amazon:["in.amazon.mShop.android.shopping","https://www.amazon.in"],swiggy:["in.swiggy.android","https://www.swiggy.com"],zomato:["com.application.zomato","https://www.zomato.com"],uber:["com.ubercab","https://m.uber.com"],"google pay":["com.google.android.apps.nbu.paisa.user",""],phonepe:["com.phonepe.app",""],settings:["SETTINGS",""]};
+function appHref(key){const a=APPS[key];if(!a)return null;const [pkg,web]=a;
+  if(pkg==="SETTINGS")return isAndroid?"intent:#Intent;action=android.settings.SETTINGS;end":null;
+  if(isAndroid)return `intent:#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=${pkg};${web?"S.browser_fallback_url="+encodeURIComponent(web)+";":""}end`;
+  return web||null}
+function findApp(name){name=name.toLowerCase().replace(/\b(the|app|application|my)\b/g,"").trim();if(APPS[name])return name;return Object.keys(APPS).find(k=>name.includes(k))||null}
+
+const T={
+  async get_weather({place}){setState("executing","Scanning weather");
+    let lat,lon,label=place||"";
+    if(place){const g=await getJSON(`https://geocoding-api.open-meteo.com/v1/search?count=1&language=en&name=${encodeURIComponent(place)}`);if(!g.results||!g.results.length)return {say:`I couldn't find a place called ${place}.`,result:{error:"place not found"}};lat=g.results[0].latitude;lon=g.results[0].longitude;label=g.results[0].name}
+    else{try{const p=await getPosition();lat=p.lat;lon=p.lon;label=await placeName(lat,lon)}catch(e){return {say:e.message==="denied"?"Location access is off. Tell me a city, like “weather in Coimbatore”.":"I couldn't get your location. Tell me a city instead.",result:{error:"location unavailable; ask user for a city"}}}}
+    const us=/en-US/.test(navigator.language);
+    const d=await getJSON(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,apparent_temperature,weather_code,relative_humidity_2m,wind_speed_10m&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max,weather_code&timezone=auto&forecast_days=2${us?"&temperature_unit=fahrenheit":""}`);
+    const c=d.current,dy=d.daily,R=x=>Math.round(x);
+    const result={place:label,now:{temp:R(c.temperature_2m),feels:R(c.apparent_temperature),cond:WMO[c.weather_code]||"",humidity:c.relative_humidity_2m,wind_kmh:R(c.wind_speed_10m)},today:{high:R(dy.temperature_2m_max[0]),low:R(dy.temperature_2m_min[0]),rain_chance:dy.precipitation_probability_max[0]},tomorrow:{high:R(dy.temperature_2m_max[1]),low:R(dy.temperature_2m_min[1]),cond:WMO[dy.weather_code[1]]||"",rain_chance:dy.precipitation_probability_max[1]},unit:us?"F":"C"};
+    const rain=result.today.rain_chance;
+    return {result,say:`${label?label+": ":""}${result.now.temp} degrees and ${result.now.cond}. High of ${result.today.high}, low of ${result.today.low}${rain!=null?`, ${rain}% chance of rain`:""}.${rain>=50?" Take an umbrella.":""}`}},
+
+  async web_search({query}){setState("executing","Searching");
+    if(cfg.key){try{return await groundedSearch(query)}catch(e){if(e.quota)noteQuota()}}
+    let sources=[],parts=[];
+    try{const dd=await jsonp(`https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_html=1&skip_disambig=1`);
+      if(dd.AbstractText){parts.push(dd.AbstractText);if(dd.AbstractURL)sources.push({title:dd.AbstractSource||"DuckDuckGo",url:dd.AbstractURL})}
+      else if(dd.Answer)parts.push(String(dd.Answer))}catch(e){}
+    if(!parts.length){try{const lang=(cfg.lang||"en").slice(0,2)==="en"?"en":"en";
+      const s=await getJSON(`https://${lang}.wikipedia.org/w/api.php?action=query&list=search&format=json&origin=*&srlimit=3&srsearch=${encodeURIComponent(query)}`);
+      const hits=(s.query&&s.query.search)||[];
+      for(const h of hits.slice(0,3)){const u=`https://${lang}.wikipedia.org/wiki/${encodeURIComponent(h.title.replace(/ /g,"_"))}`;sources.push({title:h.title,url:u})}
+      if(hits[0]){const sm=await getJSON(`https://${lang}.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(hits[0].title.replace(/ /g,"_"))}`);
+        const sent=(sm.extract||"").split(/(?<=\.)\s+/).slice(0,2).join(" ");if(sent)parts.push(sent);
+        if(hits.length>1)parts.push(`Related: ${hits.slice(1).map(h=>h.title).join(" and ")}.`)}}catch(e){}}
+    sources.push({title:"Full web results",url:`https://www.google.com/search?q=${encodeURIComponent(query)}`});
+    if(!parts.length){offer({title:`Search “${query}”`,sub:"Opens full results in your browser",href:sources[sources.length-1].url});
+      return {say:cfg.key?"I couldn't reach search just now. I've put the search ready for you.":"Offline mode only covers encyclopedic answers. I've put a full search ready for you. Adding a free Gemini key in settings gives me live web search.",result:{error:"no results"},sources}}
+    return {say:parts.join(" "),result:{summary:parts.join(" ")},sources}},
+
+  async set_timer({seconds,label}){seconds=Math.round(+seconds);if(!seconds||seconds<1)return {say:"How long should the timer be?",result:{error:"missing duration"}};
+    const id=Math.random().toString(36).slice(2);const end=Date.now()+seconds*1000;
+    const handle=setTimeout(()=>{const i=timers.findIndex(x=>x.id===id);if(i>=0)timers.splice(i,1);renderChips();chime("alarm");notify(`${cfg.name}: timer done`,label||fmtDur(seconds));caption(`Time's up${label?" — "+label:""}.`);speak(`Time's up${label?". "+label:""}.`)},seconds*1000);
+    timers.push({id,label:label||"",end,handle});renderChips();holdScreen(true);
+    return {say:`${fmtDur(seconds)}, starting now.`,result:{status:"running in this app",duration:fmtDur(seconds),note:"rings only while the app stays open"}}},
+
+  async create_reminder({text,when_iso}){const at=new Date(when_iso);if(!text)return {say:"What should I remind you about?",result:{error:"missing text"}};
+    if(isNaN(at))return {say:"When should I remind you?",result:{error:"missing or invalid time"}};
+    const r={id:Math.random().toString(36).slice(2),text,at:+at};reminders.push(r);store.set("reminders",reminders);scheduleReminder(r);
+    const end=new Date(+at+15*60000);
+    offer({title:`Reminder · ${fmtTime(at)}`,sub:text,href:gcalLink(text,at,end,"Reminder from "+cfg.name),label:"Add to Calendar"});
+    if("Notification" in window&&Notification.permission==="default")offer({title:"Allow alerts",sub:"So reminders can show a notification",label:"Allow",onClick:()=>Notification.requestPermission()});
+    return {say:`That's set for ${fmtTime(at)}. Add it to Calendar if you want it to ring with the app closed.`,result:{status:"saved in app",at:fmtTime(at),note:"in-app reminder rings only while the app is open; user can tap Add to Calendar for a reliable alert"}}},
+
+  async create_calendar_event({title,start_iso,end_iso}){const s=new Date(start_iso);if(isNaN(s))return {say:"What time is it?",result:{error:"invalid start"}};const e=end_iso?new Date(end_iso):new Date(+s+36e5);
+    offer({title,sub:fmtTime(s),href:gcalLink(title,s,e),label:"Add"});
+    return {say:`${title}, ${fmtTime(s)}. Tap Add to save it to your calendar.`,result:{status:"awaiting_user_tap",note:"Event prepared; not saved until user taps Add"}}},
+
+  async set_alarm({hour,minute,label}){hour=+hour;minute=+(minute||0);if(isNaN(hour))return {say:"For what time?",result:{error:"missing time"}};
+    const d=new Date();d.setHours(hour,minute,0,0);if(d<=new Date())d.setDate(d.getDate()+1);
+    const r={id:Math.random().toString(36).slice(2),text:label||"Alarm",at:+d,alarm:true};reminders.push(r);store.set("reminders",reminders);scheduleReminder(r);
+    if(isAndroid){const href=`intent:#Intent;action=android.intent.action.SET_ALARM;i.android.intent.extra.alarm.HOUR=${hour};i.android.intent.extra.alarm.MINUTES=${minute};S.android.intent.extra.alarm.MESSAGE=${encodeURIComponent(label||"Alarm")};B.android.intent.extra.alarm.SKIP_UI=false;end`;
+      offer({title:`Alarm · ${fmtTime(d)}`,sub:"Set it in your Clock app",href,label:"Set"})}
+    return {say:`Alarm ready for ${fmtTime(d)}. Tap Set to put it in your Clock app. I'll also ring here if I'm open.`,result:{status:"awaiting_user_tap",at:fmtTime(d),note:"in-app backup set; system alarm requires user tap"}}},
+
+  async open_app({app}){const k=findApp(app||"");if(k==="camera"||/camera/i.test(app)){offer({title:"Camera",sub:"Take a photo for me to work with",label:"Open",onClick:()=>$("#fileCamera").click()});return {say:"Camera's ready. Tap open.",result:{status:"awaiting_user_tap"}}}
+    if(!k){const href=`https://play.google.com/store/search?q=${encodeURIComponent(app)}&c=apps`;offer({title:app,sub:"I don't have a shortcut for this app",href,label:"Find"});return {say:`I don't have a direct shortcut to ${app} yet.`,result:{error:"unknown app"}}}
+    const href=appHref(k);if(!href)return {say:`I can't open ${k} from here.`,result:{error:"no launcher on this platform"}};
+    const nice=k.replace(/\b\w/g,c=>c.toUpperCase());offer({title:nice,sub:"Ready to open",href,label:"Open"});
+    return {say:`${nice} is ready. Tap open.`,result:{status:"awaiting_user_tap",note:"phone requires a tap to switch apps"}}},
+
+  async play_media({query,service}){service=(service||"spotify").toLowerCase();setState("executing","Opening");let href,name;
+    if(/youtube/.test(service)){href=/music/.test(service)?`https://music.youtube.com/search?q=${encodeURIComponent(query)}`:`https://m.youtube.com/results?search_query=${encodeURIComponent(query)}`;name=/music/.test(service)?"YouTube Music":"YouTube"}
+    else{href=`https://open.spotify.com/search/${encodeURIComponent(query)}`;name="Spotify"}
+    offer({title:`${query}`,sub:`Search in ${name}`,href,label:"Play"});
+    return {say:`Found it in ${name}. Tap play to open it.`,result:{status:"awaiting_user_tap",note:`opens ${name} search for the query; playback starts in that app`}}},
+
+  async call_contact({name_or_number}){const raw=String(name_or_number||"").trim().replace(/\b[a-z]/g,c=>c.toUpperCase());const digits=raw.replace(/[^\d+]/g,"");
+    let tel=digits.length>=5?digits:contactsKnown[raw.toLowerCase()];
+    if(tel){confirmSheet("Call",`Call <q>${esc(raw)}</q>${tel!==raw?` on ${esc(tel)}`:""}?`,`tel:${tel}`,"Call");return {say:`Calling ${raw}. Tap call to confirm.`,result:{status:"awaiting_user_confirmation"}}}
+    if("contacts" in navigator&&navigator.contacts.select){offer({title:`Find ${raw}`,sub:"Pick from your contacts",label:"Pick",onClick:async()=>{try{const [c]=await navigator.contacts.select(["name","tel"]);if(c&&c.tel&&c.tel[0]){contactsKnown[raw.toLowerCase()]=c.tel[0];store.set("contacts",contactsKnown);confirmSheet("Call",`Call <q>${esc(c.name&&c.name[0]||raw)}</q> on ${esc(c.tel[0])}?`,`tel:${c.tel[0].replace(/\s/g,"")}`,"Call")}}catch(e){}}});
+      return {say:`I don't have a number for ${raw} yet. Pick them from your contacts once and I'll remember.`,result:{status:"awaiting_user_tap",note:"contact picker offered"}}}
+    offer({title:"Phone",sub:`Dial ${raw} yourself`,href:"tel:",label:"Open"});return {say:`I can't read contacts in this browser. I've opened the dialer button for you.`,result:{error:"no contact access"}}},
+
+  async send_message({recipient,body,channel}){recipient=String(recipient||"").trim().replace(/\b[a-z]/g,c=>c.toUpperCase());body=String(body||"").trim();channel=(channel||"sms").toLowerCase();
+    if(!body)return {say:"What should the message say?",result:{error:"missing body"}};
+    const digits=recipient.replace(/[^\d+]/g,"");let tel=digits.length>=5?digits:contactsKnown[recipient.toLowerCase()];
+    const build=t=>/whatsapp/.test(channel)?`https://wa.me/${(t||"").replace(/[^\d]/g,"")}?text=${encodeURIComponent(body)}`:`sms:${t||""}${isAndroid?"?":"&"}body=${encodeURIComponent(body)}`;
+    const app=/whatsapp/.test(channel)?"WhatsApp":"Messages";
+    const go=t=>confirmSheet(`Send via ${app}`,`To <q>${esc(recipient||"choose in app")}</q>${t?" · "+esc(t):""}<br><br>“${esc(body)}”`,build(t),"Open "+app);
+    if(tel||!recipient){go(tel);return {say:`Message to ${recipient||"someone"}: ${body}. Tap to open ${app}, then send.`,result:{status:"awaiting_user_confirmation",note:"user must confirm and press send in the messaging app"}}}
+    if("contacts" in navigator&&navigator.contacts.select){offer({title:`Message ${recipient}`,sub:"Pick them from contacts",label:"Pick",onClick:async()=>{try{const [c]=await navigator.contacts.select(["name","tel"]);if(c&&c.tel&&c.tel[0]){contactsKnown[recipient.toLowerCase()]=c.tel[0].replace(/\s/g,"");store.set("contacts",contactsKnown);go(contactsKnown[recipient.toLowerCase()])}}catch(e){}}});
+      return {say:`Pick ${recipient} from your contacts and I'll prepare it. I'll remember them next time.`,result:{status:"awaiting_user_tap"}}}
+    go(null);return {say:`Message drafted. Choose ${recipient} in ${app} and send.`,result:{status:"awaiting_user_confirmation"}}},
+
+  async find_nearby({category}){setState("executing","Locating");category=(category||"restaurant").toLowerCase();
+    const MAP={restaurant:'["amenity"="restaurant"]',food:'["amenity"~"restaurant|fast_food"]',cafe:'["amenity"="cafe"]',coffee:'["amenity"="cafe"]',atm:'["amenity"="atm"]',bank:'["amenity"="bank"]',hospital:'["amenity"~"hospital|clinic"]',pharmacy:'["amenity"="pharmacy"]',petrol:'["amenity"="fuel"]',fuel:'["amenity"="fuel"]',gym:'["leisure"="fitness_centre"]',park:'["leisure"="park"]',supermarket:'["shop"="supermarket"]',hotel:'["tourism"="hotel"]',bar:'["amenity"~"bar|pub"]'};
+    const key=Object.keys(MAP).find(k=>category.includes(k))||"restaurant";
+    let p;try{p=await getPosition()}catch(e){const href=`https://www.google.com/maps/search/${encodeURIComponent(category+" near me")}`;offer({title:`${category} nearby`,sub:"Open in Maps",href,label:"Maps"});return {say:"I need location access for that. I've put a Maps search ready instead.",result:{error:"location unavailable"}}}
+    let places=[];
+    try{const q=`[out:json][timeout:15];nwr(around:2500,${p.lat},${p.lon})${MAP[key]}["name"];out center 40;`;
+      const d=await getJSON("https://overpass-api.de/api/interpreter",{method:"POST",body:"data="+encodeURIComponent(q),headers:{"Content-Type":"application/x-www-form-urlencoded"}});
+      places=(d.elements||[]).map(e=>{const la=e.lat??e.center?.lat,lo=e.lon??e.center?.lon;return {name:e.tags.name,cuisine:(e.tags.cuisine||"").replace(/_/g," ").split(";")[0],lat:la,lon:lo,m:Math.round(distM(p.lat,p.lon,la,lo))}}).filter(x=>x.lat).sort((a,b)=>(b.cuisine?1:0)-(a.cuisine?1:0)||a.m-b.m);
+      const seen=new Set();places=places.filter(x=>!seen.has(x.name)&&seen.add(x.name)).sort((a,b)=>a.m-b.m).slice(0,3)}catch(e){}
+    const mapsAll=`https://www.google.com/maps/search/${encodeURIComponent(key+" near me")}`;
+    if(!places.length){offer({title:`${key} nearby`,sub:"Open in Maps",href:mapsAll,label:"Maps"});return {say:`I couldn't find any ${key}s in the open map data around you. Maps should have more.`,result:{places:[]}}}
+    places.forEach(x=>offer({title:x.name,sub:`${x.m<1000?x.m+" m":(x.m/1000).toFixed(1)+" km"}${x.cuisine?" · "+x.cuisine:""}`,href:`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(x.name)}&query_place_id=&center=${x.lat},${x.lon}`,label:"Map",keep:true}));
+    const list=places.map(x=>`${x.name}, ${x.m<1000?x.m+" metres":(x.m/1000).toFixed(1)+" kilometres"}${x.cuisine?", "+x.cuisine:""}`).join("; ");
+    return {say:`Closest options: ${list}. Open one in Maps to see reviews.`,result:{places,note:"from OpenStreetMap; no ratings available"}}},
+
+  async get_schedule(){const now=new Date(),end=new Date(now);end.setHours(23,59,59);
+    const today=reminders.filter(r=>r.at>=+now&&r.at<=+end).sort((a,b)=>a.at-b.at);
+    offer({title:"Google Calendar",sub:"Your full schedule",href:isAndroid?appHref("calendar"):"https://calendar.google.com/calendar/r/day",label:"Open"});
+    const tm=timers.length?` ${timers.length} timer${timers.length>1?"s":""} running.`:"";
+    if(!today.length)return {say:`Nothing I'm holding for the rest of today.${tm} Your calendar app has the full picture. It's one tap away.`,result:{in_app_items:[],note:"cannot read the phone calendar from a web app"}};
+    return {say:`Still today: ${today.map(r=>`${r.text} at ${fmtTime(new Date(r.at))}`).join("; ")}.${tm}`,result:{in_app_items:today.map(r=>({text:r.text,at:fmtTime(new Date(r.at))})),note:"phone calendar not readable from a web app"}}},
+
+  async remember_fact({fact}){fact=String(fact||"").trim();if(!fact)return {say:"What should I remember?",result:{error:"empty"}};facts.push(fact);if(facts.length>60)facts.shift();store.set("facts",facts);return {say:"Noted.",result:{status:"saved"}}},
+
+  async search_files({query}){offer({title:`Search files for “${query}”`,sub:"Pick the files or folder to scan",label:"Choose",onClick:()=>{fileSearchQuery=query;$("#fileSearch").click()}});
+    return {say:"Phones don't let web apps browse storage on their own. Pick the files and I'll search them.",result:{status:"awaiting_user_tap",note:"user must pick files"}}},
+
+  async explain_document({question}){if(!doc)return {say:"Attach the PDF with the paperclip and ask again.",result:{error:"no document attached"}};
+    if(cfg.key)return {say:"",result:{document_name:doc.name,pages:doc.pages,text_excerpt:doc.text.slice(0,20000)}};
+    return {say:localSummary(doc),result:{}}},
+
+  async cinematic_image(){if(!img){offer({title:"Choose a photo",sub:"I'll give it a cinematic grade",label:"Choose",onClick:()=>{attachIntent="cine";$("#fileAttach").click()}});return {say:"Choose the photo and I'll grade it.",result:{status:"awaiting_user_tap"}}}
+    setState("executing","Grading");await gradeCinematic(img.file);return {say:"Done. Wide frame, teal shadows, warm highlights.",result:{status:"completed",note:"image graded and shown to user"}}},
+
+  async share_text({text}){if(navigator.share){offer({title:"Share",sub:String(text).slice(0,60),label:"Share",onClick:()=>navigator.share({text}).catch(()=>{})});return {say:"Ready to share. Tap share.",result:{status:"awaiting_user_tap"}}}
+    return {say:"Sharing isn't available in this browser.",result:{error:"unsupported"}}}
+};
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+function confirmSheet(title,html,href,label){$("#confirmTitle").textContent=title;$("#confirmText").innerHTML=html;const a=$("#confirmGo");a.href=href;a.textContent=label;a.removeAttribute("target");openSheet("#sheetConfirm")}
+
+/* reminders scheduling */
+const remTimers={};
+function scheduleReminder(r){const ms=r.at-Date.now();if(ms<=0||ms>2147483000)return;remTimers[r.id]=setTimeout(()=>fireReminder(r),ms)}
+function fireReminder(r){reminders=reminders.filter(x=>x.id!==r.id);store.set("reminders",reminders);chime("alarm");notify(cfg.name+(r.alarm?": alarm":": reminder"),r.text);caption(r.alarm?`It's ${fmtTime(new Date(r.at))}. ${r.text}.`:`Reminder: ${r.text}.`);addTurn("ai","Reminder: "+r.text);speak(r.alarm?`It's ${fmtTime(new Date(r.at))}.`:`Reminder. ${r.text}.`)}
+function checkMissedReminders(){const now=Date.now();const missed=reminders.filter(r=>r.at<=now);if(!missed.length)return;reminders=reminders.filter(r=>r.at>now);store.set("reminders",reminders);
+  const msg=`While I was closed, you had: ${missed.map(r=>`${r.text} at ${fmtTime(new Date(r.at))}`).join("; ")}.`;caption(msg);addTurn("ai",msg)}
+reminders.forEach(scheduleReminder);
+
+/* ============ GEMINI (optional, free tier) ============ */
+const DECLS=[
+ {name:"get_weather",description:"Current weather and today/tomorrow forecast. Omit place to use the phone's location.",parameters:{type:"OBJECT",properties:{place:{type:"STRING",description:"City or place name"}}}},
+ {name:"web_search",description:"Search the live web (Google) for current information, news, prices, recommendations, comparisons.",parameters:{type:"OBJECT",properties:{query:{type:"STRING"}},required:["query"]}},
+ {name:"set_timer",description:"Start a countdown timer in the app.",parameters:{type:"OBJECT",properties:{seconds:{type:"INTEGER"},label:{type:"STRING"}},required:["seconds"]}},
+ {name:"create_reminder",description:"Create a reminder at a local date-time.",parameters:{type:"OBJECT",properties:{text:{type:"STRING"},when_iso:{type:"STRING",description:"Local ISO 8601 date-time without offset, e.g. 2026-10-06T20:00:00"}},required:["text","when_iso"]}},
+ {name:"create_calendar_event",description:"Prepare a calendar event the user can add with one tap.",parameters:{type:"OBJECT",properties:{title:{type:"STRING"},start_iso:{type:"STRING"},end_iso:{type:"STRING"}},required:["title","start_iso"]}},
+ {name:"set_alarm",description:"Set a wake-up alarm.",parameters:{type:"OBJECT",properties:{hour:{type:"INTEGER",description:"0-23"},minute:{type:"INTEGER"},label:{type:"STRING"}},required:["hour"]}},
+ {name:"open_app",description:"Open an app on the phone (Spotify, YouTube, WhatsApp, Maps, Gmail, Camera, Settings, etc.).",parameters:{type:"OBJECT",properties:{app:{type:"STRING"}},required:["app"]}},
+ {name:"play_media",description:"Find and play music, a playlist or a video.",parameters:{type:"OBJECT",properties:{query:{type:"STRING"},service:{type:"STRING",description:"spotify, youtube or youtube music"}},required:["query"]}},
+ {name:"call_contact",description:"Prepare a phone call (user confirms).",parameters:{type:"OBJECT",properties:{name_or_number:{type:"STRING"}},required:["name_or_number"]}},
+ {name:"send_message",description:"Draft an SMS or WhatsApp message (user confirms and sends).",parameters:{type:"OBJECT",properties:{recipient:{type:"STRING"},body:{type:"STRING"},channel:{type:"STRING",description:"sms or whatsapp"}},required:["recipient","body"]}},
+ {name:"find_nearby",description:"Find nearby places like restaurants, cafes, ATMs, pharmacies, hospitals, fuel.",parameters:{type:"OBJECT",properties:{category:{type:"STRING"}},required:["category"]}},
+ {name:"get_schedule",description:"Today's reminders and timers held in the app.",parameters:{type:"OBJECT",properties:{}}},
+ {name:"remember_fact",description:"Save a lasting fact or preference the user wants remembered.",parameters:{type:"OBJECT",properties:{fact:{type:"STRING"}},required:["fact"]}},
+ {name:"search_files",description:"Search files the user picks on their phone.",parameters:{type:"OBJECT",properties:{query:{type:"STRING"}},required:["query"]}},
+ {name:"explain_document",description:"Get the text of the attached PDF/document to explain or answer questions about it.",parameters:{type:"OBJECT",properties:{question:{type:"STRING"}}}},
+ {name:"cinematic_image",description:"Apply a cinematic color grade to the attached photo.",parameters:{type:"OBJECT",properties:{}}},
+ {name:"share_text",description:"Share text via the phone's share sheet.",parameters:{type:"OBJECT",properties:{text:{type:"STRING"}},required:["text"]}}];
+function sysPrompt(){const now=new Date();return `You are ${cfg.name}, a personal AI assistant living on the user's phone. Personality: calm, intelligent, confident, concise, quietly witty now and then. Your replies are spoken aloud: 1-3 short sentences, no markdown, no lists, no emojis, no URLs. Prefer phrases like "Done.", "On it.", "Of course.". Never ask "How can I help you?".
+Use tools for actions and for anything current. Honesty rule: many tools return status "awaiting_user_tap" or "awaiting_user_confirmation" — then say it's ready and the user needs to tap; never claim a message was sent, a call made, or an app opened. If a tool returns an error, say plainly what's needed.
+Resolve relative times yourself. Now: ${now.toString()}. Timezone: ${Intl.DateTimeFormat().resolvedOptions().timeZone}.
+${facts.length?"Things the user asked you to remember:\n- "+facts.join("\n- "):""}
+${doc?`A document named "${doc.name}" is attached; call explain_document when the user refers to it.`:""}${img?" A photo is attached and visible to you.":""}`}
+let quotaNoted=0;
+function noteQuota(){if(Date.now()-quotaNoted>6e5){quotaNoted=Date.now();offer({title:"Free Gemini quota reached",sub:"Running in offline mode for now",label:"OK"})}}
+async function gemini(body,model){const m=model||cfg.model||"gemini-flash-latest";
+  const ctl=new AbortController();const to=setTimeout(()=>ctl.abort(),30000);
+  try{const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(m)}:generateContent`,{method:"POST",signal:ctl.signal,headers:{"Content-Type":"application/json","x-goog-api-key":cfg.key},body:JSON.stringify(body)});
+    if(r.status===404&&!model&&m!=="gemini-flash-lite-latest")return gemini(body,"gemini-flash-lite-latest");
+    if(!r.ok){let msg="";try{msg=(await r.json()).error.message}catch(e){}const err=new Error(r.status===429?"Free quota reached":r.status===400&&/API key/i.test(msg)?"The Gemini key isn't valid":`Gemini error ${r.status}`);err.quota=r.status===429;err.status=r.status;throw err}
+    return await r.json()}finally{clearTimeout(to)}}
+async function groundedSearch(q){const res=await gemini({contents:[{role:"user",parts:[{text:`Search the web and answer for a voice assistant in at most 4 short spoken sentences, no markdown. If asked for top options, name them briefly. Query: ${q}`}]}],tools:[{google_search:{}}]});
+  const c=res.candidates&&res.candidates[0];const text=(c?.content?.parts||[]).filter(p=>p.text&&!p.thought).map(p=>p.text).join(" ").trim();
+  const sources=(c?.groundingMetadata?.groundingChunks||[]).map(g=>g.web).filter(Boolean).map(w=>({title:w.title,url:w.uri})).slice(0,5);
+  if(!text)throw new Error("empty");return {say:clean(text),result:{answer:text,sources:sources.map(s=>s.title)},sources}}
+function clean(t){return String(t).replace(/\*\*|__|`|#+\s/g,"").replace(/\[(\d+)\]/g,"").replace(/\s+/g," ").trim()}
+async function geminiTurn(){
+  const contents=history.slice(-14).filter(h=>h.text).map(h=>({role:h.role==="user"?"user":"model",parts:[{text:h.text}]}));
+  while(contents.length&&contents[0].role!=="user")contents.shift();
+  const last=contents[contents.length-1];
+  if(img&&img.b64&&img.fresh){last.parts.push({inline_data:{mime_type:img.type,data:img.b64}});img.fresh=false}
+  let sources=[];
+  for(let step=0;step<5;step++){
+    const res=await gemini({systemInstruction:{parts:[{text:sysPrompt()}]},contents,tools:[{functionDeclarations:DECLS}],generationConfig:{temperature:.6,maxOutputTokens:2048}});
+    const cand=res.candidates&&res.candidates[0];const ps=(cand&&cand.content&&cand.content.parts)||[];
+    const calls=ps.filter(p=>p.functionCall);
+    if(!calls.length){const txt=ps.filter(p=>p.text&&!p.thought).map(p=>p.text).join(" ");return {say:clean(txt)||"Done.",sources}}
+    contents.push(cand.content);const out=[];
+    for(const p of calls){const fc=p.functionCall;let r;
+      try{r=T[fc.name]?await T[fc.name](fc.args||{}):{result:{error:"unknown tool"}}}catch(e){r={result:{error:String(e.message||e)}}}
+      if(r.sources)sources=sources.concat(r.sources);
+      const fr={name:fc.name,response:{...(r.result||{}),...(r.say?{spoken_summary:r.say}:{})}};if(fc.id)fr.id=fc.id;out.push({functionResponse:fr})}
+    contents.push({role:"user",parts:out});setState("thinking")}
+  return {say:"That needed more steps than I can take at once. Try splitting it up.",sources}}
+
+/* ============ LOCAL brain (no key, no cost) ============ */
+const ACK=["On it.","Of course.","Right away."];
+function stripWake(t){const w=wakeWords().join("|");return t.replace(new RegExp(`^(hey|hi|ok|okay|yo)?\\s*,?\\s*(${w})\\b[\\s,.!]*`,"i"),"").trim()}
+async function localIntent(text,{quickOnly}){
+  const s=text.toLowerCase().replace(/[?!.]+$/,"").trim();let m;
+  if(/^(stop|quiet|be quiet|shut up|cancel|never ?mind|that's all|nothing)$/.test(s)){pendingSlot=null;closeSheets();return {say:"Okay."}}
+  if(/\b(cancel|stop|clear)\b.*\btimers?\b/.test(s)){const n=timers.length;timers.splice(0).forEach(t=>clearTimeout(t.handle));renderChips();return {say:n?"Timers cleared.":"No timers running."}}
+  if(/\btimer\b/.test(s)||/^(count ?down)/.test(s)){const sec=parseDuration(s);if(sec){const lab=(s.match(/\bfor (?:the |my )?([a-z ]+?)(?: for| \d|$)/)||[])[1];return T.set_timer({seconds:sec,label:lab&&!/\d|minute|second|hour/.test(lab)?lab:""})}if(!quickOnly){pendingSlot={type:"timer"};return {say:"For how long?"}}}
+  if(/\b(what('?s| is) the time|what time is it|time now|current time)\b/.test(s))return {say:`It's ${new Date().toLocaleTimeString([], {hour:"numeric",minute:"2-digit"})}.`};
+  if(/\b(what('?s| is) (the |today'?s )?date|what day is (it|today)|today'?s date)\b/.test(s))return {say:`It's ${new Date().toLocaleDateString([], {weekday:"long",day:"numeric",month:"long"})}.`};
+  if(/\b(alarm|wake me)\b/.test(s)){const d=parseWhen(s);if(d)return T.set_alarm({hour:d.getHours(),minute:d.getMinutes(),label:"Alarm"});if(!quickOnly){pendingSlot={type:"alarm"};return {say:"For what time?"}}}
+  if(quickOnly)return null;
+
+  // slot filling from a previous question
+  if(pendingSlot){const sl=pendingSlot;pendingSlot=null;
+    if(sl.type==="timer"){const sec=parseDuration(s)||(/^\d+$/.test(s)?+s*60:null);if(sec)return T.set_timer({seconds:sec})}
+    if(sl.type==="alarm"){const d=parseWhen(/\d/.test(s)&&!/at|am|pm/.test(s)?"at "+s:s);if(d)return T.set_alarm({hour:d.getHours(),minute:d.getMinutes()})}
+    if(sl.type==="reminder"){const d=parseWhen(/^\d/.test(s)?"at "+s:s);if(d)return T.create_reminder({text:sl.text,when_iso:d.toISOString()})}
+    if(sl.type==="message"){return T.send_message({recipient:sl.to,body:text,channel:sl.channel})}}
+
+  if((m=s.match(/^(?:please )?remind me (?:to |about |that )?(.+)$/))){const body=m[1];const whenTxt=(body.match(WHEN_RE)||[]).join(" ");const what=body.replace(WHEN_RE,"").replace(/\s+(today|please)$/,"").trim();
+    const d=whenTxt?parseWhen(whenTxt):null;if(!d){pendingSlot={type:"reminder",text:what};return {say:"When should I remind you?"}}return T.create_reminder({text:what,when_iso:d.toISOString()})}
+  if(/\b(weather|temperature|forecast|raining|rain today|umbrella|how (hot|cold))\b/.test(s)){m=s.match(/\b(?:in|at|for)\s+([a-z][a-z .'-]+?)(?:\s+(?:today|tomorrow|now|right now|this week))?$/);return T.get_weather({place:m&&!/^(the|my)\b/.test(m[1])?m[1]:""})}
+  if((m=s.match(/^(?:please )?remember (?:that )?(.+)$/)))return T.remember_fact({fact:m[1]});
+  if(/\bwhat do you (know|remember) about me\b|what have i told you/.test(s))return {say:facts.length?`You've told me: ${facts.slice(-6).join("; ")}.`:"You haven't asked me to remember anything yet."};
+  if((m=s.match(/^(?:please )?(?:open|launch|start)\s+(.+?)(?:\s+and\s+(.+))?$/))){
+    if(m[2]&&/^play\b/.test(m[2])){const svc=/youtube/.test(m[1])?"youtube":"spotify";return T.play_media({query:m[2].replace(/^play\s+/,"").replace(/^(my|the)\s+/,""),service:svc})}
+    if(/camera/.test(m[1]))return T.open_app({app:"camera"});return T.open_app({app:m[1]})}
+  if(/\b(take a (photo|picture)|open (the )?camera)\b/.test(s))return T.open_app({app:"camera"});
+  if((m=s.match(/^play\s+(.+?)(?:\s+on\s+(spotify|youtube music|youtube))?$/)))return T.play_media({query:m[1].replace(/^(my|the|some)\s+/,""),service:m[2]||"spotify"});
+  if((m=s.match(/^(?:call|ring|phone|dial)\s+(.+)$/)))return T.call_contact({name_or_number:m[1].replace(/\s+(now|please)$/,"")});
+  if((m=s.match(/^(?:send|text|message|whatsapp|tell)\s+(?:a\s+)?(?:whatsapp\s+)?(?:message\s+|text\s+)?(?:to\s+)?(.+?)\s+(?:saying|that|to say|:)\s+(.+)$/))){const wa=/whatsapp/.test(s);
+    return T.send_message({recipient:m[1].replace(/\s+on whatsapp$/,""),body:text.slice(text.toLowerCase().lastIndexOf(m[2].slice(0,12))),channel:wa?"whatsapp":"sms"})}
+  if((m=s.match(/^(?:send|text|message)\s+(?:a\s+)?(?:message\s+)?(?:to\s+)?([a-z ]+)$/))){pendingSlot={type:"message",to:m[1],channel:/whatsapp/.test(s)?"whatsapp":"sms"};return {say:"What should it say?"}}
+  if(/\b(near( me)?|nearby|around (here|me)|close by|closest|nearest)\b/.test(s)){m=s.match(/\b(restaurant|food|cafe|coffee|atm|bank|hospital|pharmacy|petrol|fuel|gym|park|supermarket|hotel|bar)/);return T.find_nearby({category:m?m[1]:"restaurant"})}
+  if(/\b(schedule|agenda|what'?s on (for )?today|my day|my calendar)\b/.test(s)&&!/\b(add|create|schedule a|book)\b/.test(s))return T.get_schedule();
+  if((m=s.match(/^(?:add|create|schedule|book)\s+(?:a\s+|an\s+)?(.+?)(?:\s+to (?:my )?calendar)?$/))&&WHEN_RE.test(m[1])){WHEN_RE.lastIndex=0;const whenTxt=(m[1].match(WHEN_RE)||[]).join(" ");const title=m[1].replace(WHEN_RE,"").replace(/\s+(on|for)$/,"").trim();const d=parseWhen(whenTxt);if(d)return T.create_calendar_event({title:title.replace(/^\w/,c=>c.toUpperCase()),start_iso:d.toISOString()})}
+  WHEN_RE.lastIndex=0;
+  if(/\b(search|find|look for|look in)\b.*\b(files?|documents?|folder|downloads)\b/.test(s)){m=s.match(/\bfor (?:the |my )?(.+?)(?: in my files| in files|$)/)||s.match(/files? (?:for|about) (.+)$/);return T.search_files({query:(m&&m[1]||"").replace(/\b(file|files|project)\b/g,"").trim()||"project"})}
+  if(/\b(pdf|document|this file|attachment)\b/.test(s)&&/\b(explain|summari[sz]e|what|tell me|read)\b/.test(s))return T.explain_document({question:text});
+  if(/\b(cinematic|film look|movie look|color grade|colour grade)\b/.test(s))return T.cinematic_image();
+  if(/^(hi|hello|hey|good (morning|afternoon|evening)|yo|sup)\b/.test(s)&&s.split(" ").length<=4){const h=new Date().getHours();return {say:`${h<12?"Morning":h<17?"Afternoon":"Evening"}. Systems are up.`}}
+  if(/^(thanks|thank you|cheers)\b/.test(s))return {say:"Anytime."};
+  if(/^(who|what) are you\b/.test(s))return {say:`I'm ${cfg.name}. I run on your phone, and I'm entirely free to operate.`};
+  if((m=s.match(/^(?:search|google|look up|find out|search for)\s+(?:for\s+)?(.+)$/)))return T.web_search({query:m[1]});
+  return T.web_search({query:text});
+}
+function localSummary(d){const sents=d.text.replace(/\s+/g," ").split(/(?<=[.!?])\s+/).filter(x=>x.length>40&&x.length<300);
+  const stop=new Set("the a an and or of to in on for with is are was were be by as at that this it from which their its into can will has have not".split(" "));
+  const freq={};d.text.toLowerCase().match(/[a-z]{4,}/g)?.forEach(w=>{if(!stop.has(w))freq[w]=(freq[w]||0)+1});
+  const top=Object.entries(freq).sort((a,b)=>b[1]-a[1]).slice(0,4).map(x=>x[0]);
+  const scored=sents.map((x,i)=>({x,i,s:x.toLowerCase().split(/\W+/).reduce((a,w)=>a+(freq[w]||0),0)/Math.sqrt(x.length)})).sort((a,b)=>b.s-a.s).slice(0,3).sort((a,b)=>a.i-b.i);
+  return `${d.pages?d.pages+" pages, ":""}mostly about ${top.join(", ")}. Key points: ${scored.map(x=>x.x).join(" ")}`}
+
+/* ============ main turn ============ */
+async function handle(raw){
+  const text=stripWake(raw);if(!text){startCommand();return}
+  stopRec();busy=true;addTurn("user",text);heard(text);setState("thinking");
+  let out=null;
+  try{
+    out=await localIntent(text,{quickOnly:!!cfg.key});
+    if(!out&&cfg.key){try{out=await geminiTurn()}catch(e){if(e.quota)noteQuota();else if(e.status===400||e.status===403)offer({title:"Gemini key problem",sub:e.message,label:"Settings",onClick:()=>{syncSettings();openSheet("#sheetSettings")}});out=null}}
+    if(!out)out=await localIntent(text,{quickOnly:false});
+  }catch(e){out={say:navigator.onLine?"Something went wrong reaching that service. Try again in a moment.":"I'm offline right now. Timers, reminders and memory still work."}}
+  busy=false;
+  if(!out||!out.say){out={say:ACK[0]}}
+  addTurn("ai",out.say,out.sources);caption(out.say);
+  if(out.sources&&out.sources.length&&!$("#actions").textContent.includes("Sources"))offer({title:"Sources",sub:out.sources.map(s=>s.title).filter(Boolean).slice(0,3).join(" · "),label:"View",onClick:()=>{renderHistory();openSheet("#sheetHistory")},keep:true});
+  if(S.state!=="error")await speak(out.say);else resumeWake();
+}
+
+/* ============ attachments ============ */
+let attachIntent=null,fileSearchQuery="";
+async function readAttachment(f){if(!f)return;
+  if(f.type==="application/pdf"||/\.pdf$/i.test(f.name)){setState("executing","Reading");caption(`Reading ${f.name}…`);
+    try{if(!window.pdfjsLib)throw new Error("PDF reader didn't load. Check your connection.");pdfjsLib.GlobalWorkerOptions.workerSrc="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+      const pdf=await pdfjsLib.getDocument({data:await f.arrayBuffer()}).promise;let text="";const n=Math.min(pdf.numPages,60);
+      for(let i=1;i<=n;i++){const pg=await pdf.getPage(i);const tc=await pg.getTextContent();text+=tc.items.map(x=>x.str).join(" ")+"\n"}
+      if(text.trim().length<40)throw new Error("This PDF looks scanned; there's no text layer to read.");
+      doc={name:f.name,text,pages:pdf.numPages};img=null;renderChips();setState("idle");caption(`${f.name} loaded. ${pdf.numPages} pages. Ask me about it.`);
+    }catch(e){fail(e.message)}}
+  else if(f.type.startsWith("image/")){const b64=await new Promise(r=>{const fr=new FileReader();fr.onload=()=>r(String(fr.result).split(",")[1]);fr.readAsDataURL(f)});
+    img={name:f.name||"photo.jpg",type:f.type,file:f,b64:f.size<7e6?b64:null,fresh:true};doc=null;renderChips();
+    if(attachIntent==="cine"){attachIntent=null;handle("make this image cinematic")}else caption("Photo loaded. Ask me to make it cinematic, or what's in it.")}
+  else{const t=await f.text();doc={name:f.name,text:t,pages:0};img=null;renderChips();caption(`${f.name} loaded.`)}}
+$("#fileAttach").onchange=e=>{readAttachment(e.target.files[0]);e.target.value=""};
+$("#fileCamera").onchange=e=>{readAttachment(e.target.files[0]);e.target.value=""};
+$("#fileSearch").onchange=async e=>{const files=[...e.target.files];e.target.value="";const q=fileSearchQuery.toLowerCase();setState("executing","Searching");
+  const hits=[];for(const f of files){let hit=f.name.toLowerCase().includes(q);if(!hit&&f.size<2e6&&/text|json|javascript|python|csv|markdown/.test(f.type||"text")){try{hit=(await f.text()).toLowerCase().includes(q)}catch(e){}}if(hit)hits.push(f.name)}
+  const say=hits.length?`${hits.length} match${hits.length>1?"es":""}: ${hits.slice(0,5).join(", ")}.`:`Nothing matching “${fileSearchQuery}” in those ${files.length} files.`;addTurn("ai",say);caption(say);speak(say)};
+
+/* cinematic grade: 2.39:1 crop, teal/orange split-tone, filmic curve, vignette, grain */
+let gradedURL=null,originalURL=null;
+async function gradeCinematic(file){const bmp=await createImageBitmap(file);let w=bmp.width,h=bmp.height;const ar=2.39;
+  let sw=w,sh=Math.round(w/ar);if(sh>h){sh=h;sw=Math.round(h*ar)}const sx=(w-sw)/2,sy=(h-sh)/2;const k=Math.min(1,2400/sw);const W2=Math.round(sw*k),H2=Math.round(sh*k);
+  const c=document.createElement("canvas");c.width=W2;c.height=H2;const g=c.getContext("2d");g.drawImage(bmp,sx,sy,sw,sh,0,0,W2,H2);
+  const im=g.getImageData(0,0,W2,H2),d=im.data;const curve=x=>{x/=255;const y=x<.5?2*x*x*.9+x*.1:1-2*(1-x)*(1-x)*.9-(1-x)*.1;return y};
+  for(let i=0;i<d.length;i+=4){let r=d[i]/255,gg=d[i+1]/255,b=d[i+2]/255;const l=.2126*r+.7152*gg+.0722*b;
+    r=l+(r-l)*.82;gg=l+(gg-l)*.82;b=l+(b-l)*.82;
+    const sh=Math.max(0,1-l*2),hi=Math.max(0,l*2-1);
+    r+=-.05*sh+.08*hi;gg+=.02*sh+.03*hi;b+=.07*sh-.07*hi;
+    r=curve(Math.min(1,Math.max(0,r))*255);gg=curve(Math.min(1,Math.max(0,gg))*255);b=curve(Math.min(1,Math.max(0,b))*255);
+    const n=(Math.random()-.5)*.03;d[i]=Math.max(0,Math.min(255,(r*.96+.02+n)*255));d[i+1]=Math.max(0,Math.min(255,(gg*.96+.02+n)*255));d[i+2]=Math.max(0,Math.min(255,(b*.96+.03+n)*255))}
+  g.putImageData(im,0,0);const vg=g.createRadialGradient(W2/2,H2/2,Math.min(W2,H2)*.35,W2/2,H2/2,Math.hypot(W2,H2)/2);vg.addColorStop(0,"rgba(0,0,0,0)");vg.addColorStop(1,"rgba(0,0,0,.55)");g.fillStyle=vg;g.fillRect(0,0,W2,H2);
+  const blob=await new Promise(r=>c.toBlob(r,"image/jpeg",.92));if(gradedURL)URL.revokeObjectURL(gradedURL);if(originalURL)URL.revokeObjectURL(originalURL);
+  gradedURL=URL.createObjectURL(blob);originalURL=URL.createObjectURL(file);
+  $("#viewerImg").src=gradedURL;$("#btnSaveImg").href=gradedURL;$("#btnSaveImg").download=(img.name||"photo").replace(/\.\w+$/,"")+"-cinematic.jpg";
+  $("#btnShareImg").onclick=async()=>{try{await navigator.share({files:[new File([blob],"cinematic.jpg",{type:"image/jpeg"})]})}catch(e){}};$("#btnShareImg").hidden=!(navigator.canShare&&navigator.canShare({files:[new File([blob],"x.jpg",{type:"image/jpeg"})]}));
+  openSheet("#sheetImage")}
+const before=$("#btnBefore");["pointerdown","pointerup","pointerleave"].forEach(ev=>before.addEventListener(ev,e=>{if(gradedURL)$("#viewerImg").src=e.type==="pointerdown"?originalURL:gradedURL}));
+
+/* ============ wiring ============ */
+function onCore(){if(S.state==="speaking"){speechSynthesis.cancel();setState("idle");return}if(S.state==="listening"){stopRec();setState("idle");resumeWake();return}startCommand()}
+cv.addEventListener("click",onCore);cv.addEventListener("keydown",e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();onCore()}});
+$("#btnMic").onclick=onCore;
+$("#btnType").onclick=()=>showType($("#typebar").hidden);
+$("#typebar").onsubmit=e=>{e.preventDefault();const v=$("#typein").value.trim();if(!v)return;$("#typein").value="";handle(v)};
+$("#btnHistory").onclick=()=>{renderHistory();openSheet("#sheetHistory")};
+$("#btnAttach").onclick=()=>{attachIntent=null;$("#fileAttach").click()};
+$("#btnSettings").onclick=()=>{syncSettings();openSheet("#sheetSettings")};
+$("#scrim").onclick=closeSheets;document.querySelectorAll("[data-close]").forEach(b=>b.onclick=closeSheets);
+$("#confirmCancel").onclick=()=>{closeSheets();caption("Cancelled.");addTurn("ai","Cancelled.")};
+$("#confirmGo").addEventListener("click",()=>{setTimeout(closeSheets,200);caption("Opened. Finish it there.")});
+$("#btnClearHistory").onclick=()=>{history=[];store.set("history",history);renderHistory()};
+function syncSettings(){$("#optWake").checked=cfg.wake;$("#optVoice").checked=cfg.voiceOn;$("#optKey").value=cfg.key;$("#optModel").value=cfg.model;$("#optName").value=cfg.name;$("#optLang").value=cfg.lang;loadVoices();
+  document.querySelectorAll(".nm").forEach(n=>n.textContent=cfg.name);$("#nameMark").textContent=cfg.name.toUpperCase();brainLabel();
+  $("#btnNotify").hidden=!("Notification" in window)||Notification.permission!=="default"}
+$("#optWake").onchange=e=>{cfg.wake=e.target.checked;saveCfg();setState(S.state);if(cfg.wake){if(!SR){cfg.wake=false;e.target.checked=false;saveCfg();caption("Wake word needs Chrome on Android.");return}holdScreen(true);stopRec();startWake();caption(`Listening for “Hey ${cfg.name}” while I'm open.`)}else{if(recMode==="wake")stopRec();holdScreen(false)}};
+$("#optVoice").onchange=e=>{cfg.voiceOn=e.target.checked;saveCfg()};
+$("#optKey").onchange=e=>{cfg.key=e.target.value.trim();saveCfg();brainLabel()};
+$("#optModel").onchange=e=>{cfg.model=e.target.value.trim()||"gemini-flash-latest";saveCfg()};
+$("#optName").onchange=e=>{cfg.name=e.target.value.trim()||"Jarvis";saveCfg();syncSettings();setState(S.state)};
+$("#optVoicePick").onchange=e=>{cfg.voice=e.target.value;saveCfg()};
+$("#optLang").onchange=e=>{cfg.lang=e.target.value;saveCfg()};
+$("#btnTestVoice").onclick=()=>speak(`${cfg.name} online. All systems nominal.`);
+$("#btnNotify").onclick=async()=>{await Notification.requestPermission();syncSettings()};
+$("#btnForget").onclick=()=>{facts=[];contactsKnown={};store.set("facts",facts);store.set("contacts",contactsKnown);caption("Memory cleared.")};
+let installEvt=null;addEventListener("beforeinstallprompt",e=>{e.preventDefault();installEvt=e;$("#btnInstall").hidden=false});
+$("#btnInstall").onclick=async()=>{if(installEvt){installEvt.prompt();installEvt=null;$("#btnInstall").hidden=true}};
+if("serviceWorker" in navigator&&!inPreview&&location.protocol!=="file:")navigator.serviceWorker.register("sw.js").catch(()=>{});
+// boot
+syncSettings();setState("idle");checkMissedReminders();
+(function greet(){const h=new Date().getHours();const g=h<5?"Working late.":h<12?"Good morning.":h<17?"Good afternoon.":"Good evening.";
+  caption(`${g} ${cfg.key?"Fully online.":"Running free in local mode. Add a free Gemini key in settings for full conversation."}`)})();
+if(new URLSearchParams(location.search).has("listen"))setTimeout(startCommand,600);else if(cfg.wake)setTimeout(startWake,800);
+</script>
+</body>
+</html>
